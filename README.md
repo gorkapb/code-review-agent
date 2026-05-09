@@ -4,26 +4,26 @@
 
 ## What it does
 
-Code Review Agent ingests a GitHub Pull Request and produces a structured review: 
-potential bugs, security concerns, maintainability suggestions, and style observations. 
-Each observation is tied to a specific file and line, with severity, explanation, and 
+Code Review Agent ingests a GitHub Pull Request and produces a structured review:
+potential bugs, security concerns, maintainability suggestions, and style observations.
+Each observation is tied to a specific file and line, with severity, explanation, and
 a suggested fix.
 
-Unlike most LLM-powered code review tools, this project treats production concerns 
-as first-class: every run is traced and persisted, every model call is cost-tracked, 
-and a regression eval suite runs on every commit against a curated dataset of real 
+Unlike most LLM-powered code review tools, this project treats production concerns
+as first-class: every run is traced and persisted, every model call is cost-tracked,
+and a regression eval suite runs on every commit against a curated dataset of real
 PRs with human reviews as ground truth.
 
 ## Why this project
 
-This is a portfolio project demonstrating how to ship AI systems that survive 
-production: not just "the agent works on a sunny day", but instrumented, evaluated, 
-multi-tenant, and cost-aware from day one. The goal is to make every architectural 
+This is a portfolio project demonstrating how to ship AI systems that survive
+production: not just "the agent works on a sunny day", but instrumented, evaluated,
+multi-tenant, and cost-aware from day one. The goal is to make every architectural
 decision visible and defensible.
 
 ## Status
 
-In active development. MVP target: **end of May 2026**. See [Roadmap](#roadmap) for 
+In active development. MVP target: **end of May 2026**. See [Roadmap](#roadmap) for
 the current phase.
 
 ## Architecture
@@ -58,6 +58,6 @@ Architectural decisions are documented as ADRs in [`docs/decisions/`](docs/decis
 
 ## Author
 
-Gorka Pineda. AI Engineer, currently building production multi-agent systems at 
-Kyndryl. PhD candidate in Computer Science (UAB Barcelona). 
+Gorka Pineda. AI Engineer, currently building production multi-agent systems at
+Kyndryl. PhD candidate in Computer Science (UAB Barcelona).
 [LinkedIn](https://www.linkedin.com/in/gorka-pineda/)
