@@ -85,7 +85,7 @@ _Diagram coming in week 2 (ADR-002)._
 ## Roadmap
 
 - [x] Repo scaffolding, ADR-001 (domain & stack rationale)
-- [ ] FastAPI skeleton + Postgres + Redis via Docker Compose (week 1)
+- [x] FastAPI skeleton + Postgres + Redis via Docker Compose (week 1)
 - [ ] Architecture diagram + ARQ worker + LLM-as-Judge study (week 2)
 - [ ] Agent end-to-end: PR diff → structured review, instrumented from day one (week 3)
 - [ ] Eval pipeline + regression dataset of 20-50 PRs (week 4)
