@@ -46,6 +46,22 @@ Pre-commit runs `ruff` (lint + format) automatically on every `git commit`. To r
 uv run pre-commit run --all-files
 ```
 
+### Docker Compose (recommended for local development)
+
+Starts the API server together with Postgres and Redis — no local installs required beyond Docker.
+
+```bash
+docker compose up --build
+```
+
+The API is available at `http://localhost:8000`. Data is persisted in named volumes (`postgres_data`, `redis_data`) across restarts.
+
+To tear everything down and remove volumes:
+
+```bash
+docker compose down -v
+```
+
 ## Status
 
 In active development. MVP target: **end of May 2026**. See [Roadmap](#roadmap) for
