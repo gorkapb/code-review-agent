@@ -21,6 +21,31 @@ production: not just "the agent works on a sunny day", but instrumented, evaluat
 multi-tenant, and cost-aware from day one. The goal is to make every architectural
 decision visible and defensible.
 
+## Getting started
+
+**Prerequisites:** Python 3.13+, [uv](https://docs.astral.sh/uv/)
+
+```bash
+# Clone and install dependencies
+git clone https://github.com/gorkapb/code-review-agent.git
+cd code-review-agent
+uv sync --all-groups
+
+# Install pre-commit hooks (required before first commit)
+uv run pre-commit install
+
+# Run the API server
+uv run python main.py
+```
+
+The server starts at `http://localhost:8000`. Hot-reload is enabled by default.
+
+Pre-commit runs `ruff` (lint + format) automatically on every `git commit`. To run it manually:
+
+```bash
+uv run pre-commit run --all-files
+```
+
 ## Status
 
 In active development. MVP target: **end of May 2026**. See [Roadmap](#roadmap) for
