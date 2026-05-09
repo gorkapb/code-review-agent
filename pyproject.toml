@@ -4,11 +4,13 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "fastapi>=0.136.1",
+    "uvicorn>=0.46.0",
+]
 
 [dependency-groups]
 dev = [
-  "mypy>=1.15.0",
   "pre-commit>=4.2.0",
   "ruff>=0.11.9",
 ]
@@ -33,8 +35,3 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["src"]
-
-[tool.mypy]
-python_version = "3.13"
-strict = true
-ignore_missing_imports = true
