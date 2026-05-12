@@ -34,6 +34,9 @@ uv sync --all-groups
 # Install pre-commit hooks (required before first commit)
 uv run pre-commit install
 
+# Apply database migrations
+uv run alembic upgrade head
+
 # Run the API server
 uv run python main.py
 ```
@@ -86,7 +89,9 @@ _Diagram coming in week 2 (ADR-002)._
 
 - [x] Repo scaffolding, ADR-001 (domain & stack rationale)
 - [x] FastAPI skeleton + Postgres + Redis via Docker Compose (week 1)
-- [ ] Architecture diagram + ARQ worker + LLM-as-Judge study (week 2)
+- [x] Async job queue with ARQ — enqueue, poll, and cancel PR review jobs (week 2)
+- [x] Persistent review storage — PostgreSQL models, Alembic migrations, hybrid Postgres/Redis state (week 2)
+- [ ] Architecture diagram + LLM-as-Judge study (week 2)
 - [ ] Agent end-to-end: PR diff → structured review, instrumented from day one (week 3)
 - [ ] Eval pipeline + regression dataset of 20-50 PRs (week 4)
 - [ ] Multi-tenant auth, retry logic, public deployment (June)

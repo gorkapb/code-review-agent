@@ -4,6 +4,10 @@ from arq.connections import ArqRedis
 from arq.jobs import Job, JobStatus
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.storage.database import get_db
+from src.storage.models import Review, ReviewStatus
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
@@ -27,6 +31,7 @@ def _get_arq_pool(request: Request) -> ArqRedis:
 
 
 ArqPool = Annotated[ArqRedis, Depends(_get_arq_pool)]
+DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
 @router.post(
@@ -50,19 +55,28 @@ async def enqueue_review(body: ReviewRequest, pool: ArqPool) -> ReviewResponse:
     response_model=JobStatusResponse,
     summary="Get the status of a review job",
 )
-async def get_review(job_id: str, pool: ArqPool) -> JobStatusResponse:
+async def get_review(job_id: str, pool: ArqPool, db: DbSession) -> JobStatusResponse:
+    # Postgres-first: terminal states are permanent (no TTL)
+    review: Review | None = await db.get(Review, job_id)
+    if review is not None and review.status in (
+        ReviewStatus.complete,
+        ReviewStatus.failed,
+    ):
+        return JobStatusResponse(
+            job_id=job_id, status=review.status.value, result=review.result
+        )
+
+    # Fall back to ARQ/Redis for queued/in-progress state
     job = Job(job_id, pool)
     job_status = await job.status()
 
-    if job_status == JobStatus.not_found:
+    if job_status == JobStatus.not_found and review is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job '{job_id}' not found.",
         )
 
-    result: dict[str, Any] | None = None
-    if job_status == JobStatus.complete:
-        info = await job.result_info()
-        result = info.result if info is not None else None
+    if review is not None:
+        return JobStatusResponse(job_id=job_id, status=review.status.value, result=None)
 
-    return JobStatusResponse(job_id=job_id, status=job_status.value, result=result)
+    return JobStatusResponse(job_id=job_id, status=job_status.value, result=None)
