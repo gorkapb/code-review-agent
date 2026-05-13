@@ -1,5 +1,6 @@
 from typing import Annotated, Any
 
+import structlog
 from arq.connections import ArqRedis
 from arq.jobs import Job, JobStatus
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -10,6 +11,8 @@ from src.storage.database import get_db
 from src.storage.models import Review, ReviewStatus
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
+
+logger = structlog.get_logger(__name__)
 
 
 class ReviewRequest(BaseModel):
@@ -43,6 +46,7 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 async def enqueue_review(body: ReviewRequest, pool: ArqPool) -> ReviewResponse:
     job = await pool.enqueue_job("analyze_pr_task", body.pr_url)
     if job is None:
+        logger.warning("duplicate job rejected", pr_url=body.pr_url)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A job for this PR is already queued.",

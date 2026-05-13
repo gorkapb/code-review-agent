@@ -1,6 +1,9 @@
 from typing import Any, TypedDict
 
+import structlog
 from langgraph.graph import END, START, StateGraph
+
+logger = structlog.get_logger(__name__)
 
 
 class ReviewState(TypedDict):
@@ -11,28 +14,43 @@ class ReviewState(TypedDict):
 
 
 def parse_diff(state: ReviewState) -> dict:
-    return {
+    logger.debug("node entered", node="parse_diff", pr_url=state["pr_url"])
+    result = {
         "diff": "--- a/main.py\n+++ b/main.py\n@@ -1,3 +1,4 @@\n+import os\n def main():\n     pass",
         "metadata": {"files_changed": 1, "additions": 1, "deletions": 0},
     }
+    logger.debug(
+        "node completed",
+        node="parse_diff",
+        files_changed=result["metadata"]["files_changed"],
+    )
+    return result
 
 
 def analyze_with_llm(state: ReviewState) -> dict:
-    return {
-        "observations": [
-            "Import added at module level — looks good.",
-            "No tests updated for the new import.",
-        ],
-    }
+    logger.debug("node entered", node="analyze_with_llm")
+    observations = [
+        "Import added at module level — looks good.",
+        "No tests updated for the new import.",
+    ]
+    logger.info(
+        "analysis completed",
+        node="analyze_with_llm",
+        observation_count=len(observations),
+    )
+    return {"observations": observations}
 
 
 def format_output(state: ReviewState) -> dict:
-    return {
+    logger.debug("node entered", node="format_output")
+    result = {
         "metadata": {
             **state["metadata"],
             "summary": f"Found {len(state['observations'])} observation(s) for {state['pr_url']}.",
         },
     }
+    logger.debug("node completed", node="format_output")
+    return result
 
 
 builder = StateGraph(ReviewState)
