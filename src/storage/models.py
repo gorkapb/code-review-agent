@@ -1,5 +1,5 @@
-import enum
 from datetime import UTC, datetime
+from enum import StrEnum
 
 from sqlalchemy import DateTime, Enum, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -10,7 +10,7 @@ class Base(DeclarativeBase):
     pass
 
 
-class ReviewStatus(str, enum.Enum):
+class ReviewStatus(StrEnum):
     pending = "pending"
     running = "running"
     complete = "complete"

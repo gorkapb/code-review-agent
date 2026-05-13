@@ -12,9 +12,9 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-DATABASE_URL = os.environ["DATABASE_URL"].replace(
-    "postgresql://", "postgresql+asyncpg://", 1
-)
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/code_review"
+).replace("postgresql://", "postgresql+asyncpg://", 1)
 
 
 def do_run_migrations(connection):
