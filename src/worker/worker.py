@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 from arq.connections import RedisSettings
 
+from src.agent.graph import graph
 from src.storage.database import AsyncSessionFactory
 from src.storage.models import Review, ReviewStatus
 
@@ -29,7 +30,9 @@ async def analyze_pr_task(ctx: dict, pr_url: str) -> dict:
     final_status = ReviewStatus.complete
     result: dict | None = None
     try:
-        result = {"pr_url": pr_url, "status": "received"}  # real work goes here
+        result = await graph.ainvoke(
+            {"pr_url": pr_url, "diff": "", "observations": [], "metadata": {}}
+        )
     except Exception:
         final_status = ReviewStatus.failed
         raise
