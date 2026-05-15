@@ -13,6 +13,7 @@ dependencies = [
     "alembic>=1.14.0",
     "langgraph>=1.2.0",
     "structlog>=24.4.0",
+    "deepeval>=4.0.2",
 ]
 
 [dependency-groups]

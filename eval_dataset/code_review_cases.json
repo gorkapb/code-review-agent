@@ -1,0 +1,26 @@
+[
+  {
+    "input": "Review this Python diff:\n--- a/auth.py\n+++ b/auth.py\n@@ -10,6 +10,7 @@\n+import os\n def get_secret():\n-    return 'hardcoded_secret_123'\n+    return os.getenv('SECRET_KEY')",
+    "actual_output": "The diff moves a hardcoded secret to an environment variable. This is a security improvement — hardcoded credentials should never appear in source code. Recommend adding a fallback check or documentation on required env vars.",
+    "expected_output": "Security improvement: removed hardcoded secret and replaced with environment variable lookup.",
+    "context": ["Security best practice: secrets must be stored in environment variables or secret managers, never hardcoded in source code."]
+  },
+  {
+    "input": "Review this Python diff:\n--- a/utils.py\n+++ b/utils.py\n@@ -5,4 +5,8 @@\n def process(items):\n-    return [x for x in items if x]\n+    result = []\n+    for x in items:\n+        if x:\n+            result.append(x)\n+    return result",
+    "actual_output": "The change replaces a list comprehension with an explicit loop. Both are functionally equivalent, but the list comprehension is more idiomatic Python and slightly more performant. Consider reverting to the comprehension unless readability is a concern for the target audience.",
+    "expected_output": "Unnecessary refactor: the original list comprehension is more Pythonic and should be kept.",
+    "context": ["Python style guide (PEP 8) prefers list comprehensions over explicit loops for simple filtering."]
+  },
+  {
+    "input": "Review this Python diff:\n--- a/api.py\n+++ b/api.py\n@@ -20,3 +20,7 @@\n def get_user(user_id: int):\n     user = db.query(User).filter(User.id == user_id).first()\n-    return user\n+    if user is None:\n+        raise HTTPException(status_code=404, detail='User not found')\n+    return user",
+    "actual_output": "Added a 404 check before returning the user object. This prevents returning null to the caller and follows REST conventions by raising an appropriate HTTP error. Good defensive addition.",
+    "expected_output": "Correct: adding a 404 guard prevents null returns and is standard REST API practice.",
+    "context": ["REST API conventions: endpoints should return 404 when a requested resource does not exist, not null or empty responses."]
+  },
+  {
+    "input": "Review this Python diff:\n--- a/models.py\n+++ b/models.py\n@@ -1,5 +1,5 @@\n class User(Base):\n     id = Column(Integer, primary_key=True)\n-    email = Column(String)\n+    email = Column(String, unique=True, nullable=False)",
+    "actual_output": "The email column now has unique and not-null constraints. This is the correct way to model email fields in most applications. Note: adding these constraints to an existing table with data requires a migration that handles duplicates and nulls first.",
+    "expected_output": "Good change: email should be unique and non-nullable. Mention migration considerations for existing data.",
+    "context": ["Database migrations that add constraints to existing columns must account for rows that would violate the new constraints."]
+  }
+]

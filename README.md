@@ -65,6 +65,74 @@ To tear everything down and remove volumes:
 docker compose down -v
 ```
 
+## Running evals
+
+The eval suite uses [deepeval](https://deepeval.com) with LLM-as-judge metrics. An OpenAI key is required because metrics use GPT-4o-mini as the judge by default.
+
+```bash
+export OPENAI_API_KEY=sk-...
+```
+
+**Run all metrics against the default dataset:**
+
+```bash
+uv run python run_evals.py
+```
+
+**Run a subset of metrics:**
+
+```bash
+uv run python run_evals.py --metrics answer_relevancy code_review_quality
+```
+
+**Point at a different dataset:**
+
+```bash
+uv run python run_evals.py --dataset eval_dataset/my_cases.json
+```
+
+**List available metrics:**
+
+```bash
+uv run python run_evals.py --list-metrics
+```
+
+Exit code is `0` if all cases pass, `1` if any fail — CI-friendly by default.
+
+### Adding a dataset
+
+Create a `.json` file (array of objects) in `eval_dataset/`. Required fields: `input`, `actual_output`. Optional: `expected_output`, `context`, `retrieval_context`.
+
+```json
+[
+  {
+    "input": "the prompt or diff sent to the agent",
+    "actual_output": "the agent's response",
+    "expected_output": "what a good response looks like",
+    "context": ["background facts the response should be faithful to"]
+  }
+]
+```
+
+CSV is also supported — pass `--dataset path/to/file.csv`.
+
+### Adding a metric
+
+Open `src/eval/metrics.py`, define a function that returns a configured deepeval metric, then register it in `METRICS_REGISTRY`:
+
+```python
+def my_metric() -> SomeMetric:
+    return SomeMetric(threshold=0.7, model=JUDGE_MODEL, include_reason=True)
+
+METRICS_REGISTRY["my_metric"] = my_metric
+```
+
+That's it — it shows up in `--list-metrics` and can be selected via `--metrics my_metric`.
+
+### Changing the judge model
+
+Edit `JUDGE_MODEL` in `src/eval/metrics.py`. Any model supported by deepeval works (e.g. `"gpt-4o"`, `"claude-opus-4-7"` via Anthropic, or a local Ollama model).
+
 ## Status
 
 In active development. MVP target: **end of May 2026**. See [Roadmap](#roadmap) for
