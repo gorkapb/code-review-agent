@@ -36,6 +36,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Create Docker Compose env file
+        run: cp .env.example .env
+
       - name: Build Docker Compose services
         run: docker compose build
 
