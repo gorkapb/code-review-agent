@@ -1,10 +1,10 @@
 import asyncio
-import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from src.config import settings
 from src.storage.models import Base
 
 config = context.config
@@ -12,9 +12,6 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/code_review"
-).replace("postgresql://", "postgresql+asyncpg://", 1)
 
 
 def do_run_migrations(connection):
@@ -24,7 +21,7 @@ def do_run_migrations(connection):
 
 
 async def run_migrations_online() -> None:
-    connectable = create_async_engine(DATABASE_URL)
+    connectable = create_async_engine(settings.database_async_url)
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()

@@ -54,6 +54,7 @@ uv run pre-commit run --all-files
 Starts the API server together with Postgres and Redis — no local installs required beyond Docker.
 
 ```bash
+cp .env.example .env
 docker compose up --build
 ```
 

@@ -1,4 +1,3 @@
-import os
 import time
 from datetime import UTC, datetime
 
@@ -6,6 +5,7 @@ import structlog
 from arq.connections import RedisSettings
 
 from src.agent.graph import graph
+from src.config import settings
 from src.observability.logging import configure_logging
 from src.storage.database import AsyncSessionFactory
 from src.storage.models import Review, ReviewStatus
@@ -72,6 +72,4 @@ async def analyze_pr_task(ctx: dict, pr_url: str) -> dict:
 class WorkerSettings:
     functions = [analyze_pr_task]
     on_startup = startup
-    redis_settings = RedisSettings.from_dsn(
-        os.getenv("REDIS_URL", "redis://localhost:6379")
-    )
+    redis_settings = RedisSettings.from_dsn(settings.redis_url)

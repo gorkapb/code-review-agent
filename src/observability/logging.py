@@ -1,15 +1,16 @@
 import logging
-import os
 import sys
 from typing import Any
 
 import structlog
 from structlog.types import EventDict, Processor
 
+from src.config import settings
+
 
 def _add_service_context(_: Any, __: str, event_dict: EventDict) -> EventDict:
-    event_dict.setdefault("service", os.getenv("SERVICE_NAME", "code-review-agent"))
-    event_dict.setdefault("version", os.getenv("SERVICE_VERSION", "0.1.0"))
+    event_dict.setdefault("service", settings.service_name)
+    event_dict.setdefault("version", settings.service_version)
     return event_dict
 
 
@@ -19,8 +20,8 @@ def _rename_event_to_message(_: Any, __: str, event_dict: EventDict) -> EventDic
 
 
 def configure_logging() -> None:
-    is_production = os.getenv("ENV", "development").lower() in ("production", "prod")
-    log_level = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+    is_production = settings.env.lower() in ("production", "prod")
+    log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
 
     shared_processors: list[Processor] = [
         structlog.contextvars.merge_contextvars,
