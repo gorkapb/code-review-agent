@@ -39,6 +39,9 @@ uv run alembic upgrade head
 
 # Run the API server
 uv run python main.py
+
+# Run the ARQ worker
+uv run arq src.worker.worker.WorkerSettings
 ```
 
 The server starts at `http://localhost:8000`. Hot-reload is enabled by default.
