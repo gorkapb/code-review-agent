@@ -1,10 +1,12 @@
 import time
 from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 from arq.connections import RedisSettings
 
 from src.agent.graph import graph
+from src.agent.pr_diff import PullRequestDiffError
 from src.config import settings
 from src.observability.logging import configure_logging
 from src.storage.database import AsyncSessionFactory
@@ -42,19 +44,23 @@ async def analyze_pr_task(ctx: dict, pr_url: str) -> dict:
     logger.info("task started")
     start = time.perf_counter()
     final_status = ReviewStatus.complete
-    result: dict | None = None
+    result: dict = {}
     try:
         result = await graph.ainvoke(
             {"pr_url": pr_url, "diff": "", "observations": [], "metadata": {}}
         )
-        logger.info(
-            "task completed", duration_ms=round((time.perf_counter() - start) * 1000, 2)
-        )
-    except Exception:
+        duration_ms = round((time.perf_counter() - start) * 1000, 2)
+        logger.info("task completed", duration_ms=duration_ms)
+    except PullRequestDiffError as exc:
         final_status = ReviewStatus.failed
-        logger.exception(
-            "task failed", duration_ms=round((time.perf_counter() - start) * 1000, 2)
-        )
+        result = _failure_result(pr_url, exc)
+        duration_ms = round((time.perf_counter() - start) * 1000, 2)
+        logger.error("task failed", duration_ms=duration_ms, error_code=exc.code)
+    except Exception as exc:
+        final_status = ReviewStatus.failed
+        result = _failure_result(pr_url, exc)
+        duration_ms = round((time.perf_counter() - start) * 1000, 2)
+        logger.exception("task failed", duration_ms=duration_ms)
         raise
     finally:
         async with db_factory() as session:
@@ -67,6 +73,25 @@ async def analyze_pr_task(ctx: dict, pr_url: str) -> dict:
         structlog.contextvars.clear_contextvars()
 
     return result
+
+
+def _failure_result(pr_url: str, error: Exception) -> dict[str, Any]:
+    if isinstance(error, PullRequestDiffError):
+        error_payload = error.to_dict()
+    else:
+        error_payload = {
+            "type": "review_failed",
+            "code": "unexpected_error",
+            "message": "Unexpected error while reviewing pull request.",
+        }
+
+    return {
+        "pr_url": pr_url,
+        "diff": "",
+        "observations": [],
+        "metadata": {},
+        "error": error_payload,
+    }
 
 
 class WorkerSettings:

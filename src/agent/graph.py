@@ -3,6 +3,8 @@ from typing import Any, TypedDict
 import structlog
 from langgraph.graph import END, START, StateGraph
 
+from src.agent.pr_diff import fetch_pull_request_diff
+
 logger = structlog.get_logger(__name__)
 
 
@@ -13,12 +15,10 @@ class ReviewState(TypedDict):
     metadata: dict[str, Any]
 
 
-def parse_diff(state: ReviewState) -> dict:
+async def parse_diff(state: ReviewState) -> dict[str, Any]:
     logger.debug("node entered", node="parse_diff", pr_url=state["pr_url"])
-    result = {
-        "diff": "--- a/main.py\n+++ b/main.py\n@@ -1,3 +1,4 @@\n+import os\n def main():\n     pass",
-        "metadata": {"files_changed": 1, "additions": 1, "deletions": 0},
-    }
+    pull_request_diff = await fetch_pull_request_diff(state["pr_url"])
+    result = {"diff": pull_request_diff.diff, "metadata": pull_request_diff.metadata}
     logger.debug(
         "node completed",
         node="parse_diff",
