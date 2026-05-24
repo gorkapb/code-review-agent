@@ -5,11 +5,18 @@ Add or remove metrics here to change what gets measured across all eval runs.
 Each metric function returns a configured deepeval metric instance.
 """
 
+import os
+
 from deepeval.metrics import AnswerRelevancyMetric, GEval
 from deepeval.test_case import LLMTestCaseParams
 
-# Default LLM model used by all metrics as judge
-JUDGE_MODEL = "gpt-4o-mini"
+from src.config import settings
+
+DEFAULT_JUDGE_MODEL = "gpt-4o-mini"
+JUDGE_MODEL = settings.eval_judge_model.strip() or DEFAULT_JUDGE_MODEL
+
+if settings.openai_api_key.strip() and not os.environ.get("OPENAI_API_KEY"):
+    os.environ["OPENAI_API_KEY"] = settings.openai_api_key.strip()
 
 # Threshold below which a test case is considered failed
 DEFAULT_THRESHOLD = 0.7

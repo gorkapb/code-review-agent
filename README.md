@@ -71,10 +71,11 @@ docker compose down -v
 
 ## Running evals
 
-The eval suite uses [deepeval](https://deepeval.com) with LLM-as-judge metrics. An OpenAI key is required because metrics use GPT-4o-mini as the judge by default.
+The eval suite uses [deepeval](https://deepeval.com) with LLM-as-judge metrics. Set an OpenAI key in `.env`; metrics use `gpt-4o-mini` as the judge by default.
 
 ```bash
-export OPENAI_API_KEY=sk-...
+OPENAI_API_KEY=sk-...
+EVAL_JUDGE_MODEL=gpt-4o-mini
 ```
 
 **Run all metrics against the default dataset:**
@@ -135,7 +136,7 @@ That's it — it shows up in `--list-metrics` and can be selected via `--metrics
 
 ### Changing the judge model
 
-Edit `JUDGE_MODEL` in `src/eval/metrics.py`. Any model supported by deepeval works (e.g. `"gpt-4o"`, `"claude-opus-4-7"` via Anthropic, or a local Ollama model).
+Set `EVAL_JUDGE_MODEL` in `.env`. Any model supported by deepeval works (for example, `gpt-4o`).
 
 ## Status
 

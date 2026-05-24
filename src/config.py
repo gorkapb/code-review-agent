@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     anthropic_api_base_url: str = "https://api.anthropic.com"
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-4-5-20251001"
+    openai_api_key: str = ""
+    eval_judge_model: str = "gpt-4o-mini"
     postgres_user: str = "postgres"
     postgres_password: str = "postgres"
     postgres_db: str = "code_review"
