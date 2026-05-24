@@ -2,8 +2,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql://postgres:postgres@localhost:5432/code_review"
-    redis_url: str = "redis://localhost:6379"
+    database_url: str = "postgresql://postgres:postgres@127.0.0.1:15432/code_review"
+    redis_url: str = "redis://127.0.0.1:16379"
     service_name: str = "code-review-agent"
     service_version: str = "0.1.0"
     env: str = "development"

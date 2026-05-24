@@ -63,6 +63,15 @@ docker compose up --build
 
 The API is available at `http://localhost:8000`. Data is persisted in named volumes (`postgres_data`, `redis_data`) across restarts.
 
+Postgres and Redis are exposed to the host on non-default ports to avoid conflicts with other local stacks such as Langfuse:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:15432/code_review
+REDIS_URL=redis://127.0.0.1:16379
+```
+
+Inside Docker Compose, the app still connects to `postgres:5432` and `redis:6379`.
+
 To tear everything down and remove volumes:
 
 ```bash
