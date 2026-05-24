@@ -5,6 +5,12 @@ import httpx
 
 from src.agent.schemas import ReviewAnalysis
 from src.config import settings
+from src.observability.langfuse import (
+    start_langfuse_observation,
+    summarize_diff,
+    summarize_pull_request_metadata,
+    trace_content_enabled,
+)
 
 ANTHROPIC_API_VERSION = "2023-06-01"
 ANTHROPIC_TIMEOUT_SECONDS = 60.0
@@ -38,10 +44,22 @@ async def review_pull_request_diff(
     if not diff.strip():
         return ReviewAnalysis(findings=[])
 
+    request_payload = _build_review_request(diff, metadata or {})
     async with _create_anthropic_client() as client:
-        response = await _post_message(
-            client, _build_review_request(diff, metadata or {})
-        )
+        with start_langfuse_observation(
+            name="anthropic-pr-review",
+            as_type="generation",
+            input=_trace_generation_input(request_payload, diff, metadata or {}),
+            metadata=_trace_generation_metadata(diff, metadata or {}),
+            model=str(request_payload["model"]),
+            model_parameters=_trace_model_parameters(request_payload),
+        ) as generation:
+            response = await _post_message(client, request_payload)
+            if generation is not None:
+                generation.update(
+                    output=_trace_generation_output(response),
+                    usage_details=_anthropic_usage_details(response),
+                )
 
     return _parse_review_analysis(response)
 
@@ -210,3 +228,92 @@ def _anthropic_error_code(response: httpx.Response) -> str:
     if response.status_code == 429:
         return "anthropic_rate_limit_exceeded"
     return "anthropic_api_error"
+
+
+def _trace_generation_input(
+    payload: dict[str, Any], diff: str, metadata: dict[str, Any]
+) -> dict[str, Any]:
+    if trace_content_enabled():
+        return {
+            "system": payload.get("system"),
+            "messages": payload.get("messages"),
+        }
+
+    return {
+        "content_redacted": True,
+        "diff": summarize_diff(diff),
+        "metadata": summarize_pull_request_metadata(metadata),
+    }
+
+
+def _trace_generation_metadata(diff: str, metadata: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "anthropic_api_version": ANTHROPIC_API_VERSION,
+        "diff": summarize_diff(diff),
+        **summarize_pull_request_metadata(metadata),
+    }
+
+
+def _trace_model_parameters(
+    payload: dict[str, Any],
+) -> dict[str, str | int | float | bool | list[str] | None]:
+    output_format = payload.get("output_config", {}).get("format", {})
+    return {
+        "temperature": payload.get("temperature"),
+        "max_tokens": payload.get("max_tokens"),
+        "output_format": output_format.get("type"),
+    }
+
+
+def _trace_generation_output(response: dict[str, Any]) -> dict[str, Any]:
+    text = _response_text(response)
+    if trace_content_enabled():
+        return {
+            "id": response.get("id"),
+            "model": response.get("model"),
+            "stop_reason": response.get("stop_reason"),
+            "content": response.get("content"),
+        }
+
+    return {
+        "id": response.get("id"),
+        "model": response.get("model"),
+        "stop_reason": response.get("stop_reason"),
+        "content_redacted": True,
+        "content_blocks": len(response.get("content", []))
+        if isinstance(response.get("content"), list)
+        else None,
+        "text_characters": len(text),
+    }
+
+
+def _response_text(response: dict[str, Any]) -> str:
+    content = response.get("content")
+    if not isinstance(content, list):
+        return ""
+    return "\n".join(
+        block["text"]
+        for block in content
+        if isinstance(block, dict)
+        and block.get("type") == "text"
+        and isinstance(block.get("text"), str)
+    )
+
+
+def _anthropic_usage_details(response: dict[str, Any]) -> dict[str, int]:
+    usage = response.get("usage")
+    if not isinstance(usage, dict):
+        return {}
+
+    details: dict[str, int] = {}
+    mapping = {
+        "input_tokens": "input",
+        "output_tokens": "output",
+        "cache_creation_input_tokens": "cache_creation_input_tokens",
+        "cache_read_input_tokens": "cache_read_input_tokens",
+    }
+    for source_key, langfuse_key in mapping.items():
+        value = usage.get(source_key)
+        if isinstance(value, int):
+            details[langfuse_key] = value
+    return details

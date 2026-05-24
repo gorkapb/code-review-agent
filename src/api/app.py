@@ -2,14 +2,14 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import structlog
-from arq.connections import create_pool
+from arq.connections import RedisSettings, create_pool
 from fastapi import FastAPI
 
 from src.api.middleware import RequestLoggingMiddleware
 from src.api.routes import router
+from src.config import settings
 from src.storage.database import engine
 from src.storage.models import Base
-from src.worker.worker import WorkerSettings
 
 logger = structlog.get_logger(__name__)
 
@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await conn.run_sync(
             Base.metadata.create_all
         )  # dev convenience; prod uses alembic
-    app.state.arq_pool = await create_pool(WorkerSettings.redis_settings)
+    app.state.arq_pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
     logger.info("application started")
     yield
     await app.state.arq_pool.aclose()

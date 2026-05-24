@@ -147,6 +147,21 @@ That's it — it shows up in `--list-metrics` and can be selected via `--metrics
 
 Set `EVAL_JUDGE_MODEL` in `.env`. Any model supported by deepeval works (for example, `gpt-4o`).
 
+## Langfuse tracing
+
+The worker emits Langfuse traces for each PR review job when Langfuse credentials are configured:
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+LANGFUSE_TRACING_ENABLED=true
+```
+
+Each job uses a deterministic trace ID derived from the ARQ job ID, adds job and PR metadata as trace attributes, and records nested observations for GitHub diff fetch, Anthropic review generation, and output formatting. The Anthropic generation includes model name, model parameters, and token usage for Langfuse cost tracking.
+
+By default, `LANGFUSE_CAPTURE_CONTENT=false` avoids sending full PR diffs and model outputs to Langfuse. Set it to `true` only when the reviewed code can be stored in your Langfuse project; API keys, tokens, passwords, emails, phone numbers, and card-like numbers are still masked before export.
+
 ## Status
 
 In active development. MVP target: **end of May 2026**. See [Roadmap](#roadmap) for

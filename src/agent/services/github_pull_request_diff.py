@@ -11,6 +11,10 @@ from src.agent.schemas import (
     PullRequestRef,
 )
 from src.config import settings
+from src.observability.langfuse import (
+    start_langfuse_observation,
+    summarize_pull_request_metadata,
+)
 
 GITHUB_API_VERSION = "2022-11-28"
 GITHUB_TIMEOUT_SECONDS = 15.0
@@ -36,20 +40,34 @@ class PullRequestDiffError(Exception):
 
 
 async def fetch_pull_request_diff(pr_url: str) -> PullRequestDiff:
-    pr_ref = _parse_github_pr_url(pr_url)
+    with start_langfuse_observation(
+        name="fetch-github-pull-request-diff",
+        as_type="tool",
+        input={"pr_url": pr_url},
+    ) as observation:
+        pr_ref = _parse_github_pr_url(pr_url)
 
-    async with _create_github_client(pr_ref.api_base_url) as client:
-        pull_request = await _get_json(
-            client, f"/repos/{pr_ref.full_name}/pulls/{pr_ref.number}"
-        )
-        files = await _get_paginated_json(
-            client, f"/repos/{pr_ref.full_name}/pulls/{pr_ref.number}/files"
+        async with _create_github_client(pr_ref.api_base_url) as client:
+            pull_request = await _get_json(
+                client, f"/repos/{pr_ref.full_name}/pulls/{pr_ref.number}"
+            )
+            files = await _get_paginated_json(
+                client, f"/repos/{pr_ref.full_name}/pulls/{pr_ref.number}/files"
+            )
+
+        result = PullRequestDiff(
+            diff=_format_pull_request_diff(pull_request, files),
+            metadata=_build_metadata(pr_url, pr_ref, pull_request, files),
         )
 
-    return PullRequestDiff(
-        diff=_format_pull_request_diff(pull_request, files),
-        metadata=_build_metadata(pr_url, pr_ref, pull_request, files),
-    )
+        if observation is not None:
+            observation.update(
+                output=summarize_pull_request_metadata(
+                    result.metadata.model_dump(mode="json")
+                )
+            )
+
+        return result
 
 
 def _parse_github_pr_url(pr_url: str) -> PullRequestRef:

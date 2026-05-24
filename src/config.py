@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +15,14 @@ class Settings(BaseSettings):
     anthropic_api_base_url: str = "https://api.anthropic.com"
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-4-5-20251001"
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_base_url: str = ""
+    langfuse_host: str = ""
+    langfuse_tracing_enabled: bool = True
+    langfuse_capture_content: bool = False
+    langfuse_debug: bool = False
+    langfuse_sample_rate: float = Field(default=1.0, ge=0.0, le=1.0)
     openai_api_key: str = ""
     eval_judge_model: str = "gpt-4o-mini"
     postgres_user: str = "postgres"
@@ -29,6 +38,12 @@ class Settings(BaseSettings):
     @property
     def database_async_url(self) -> str:
         return self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    @property
+    def langfuse_url(self) -> str:
+        return (
+            self.langfuse_base_url or self.langfuse_host or "https://cloud.langfuse.com"
+        ).rstrip("/")
 
 
 settings = Settings()
