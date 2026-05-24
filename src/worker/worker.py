@@ -6,7 +6,8 @@ import structlog
 from arq.connections import RedisSettings
 
 from src.agent.graph import graph
-from src.agent.pr_diff import PullRequestDiffError
+from src.agent.services.github_pull_request_diff import PullRequestDiffError
+from src.agent.services.pull_request_review import PullRequestReviewError
 from src.config import settings
 from src.observability.logging import configure_logging
 from src.storage.database import AsyncSessionFactory
@@ -47,11 +48,16 @@ async def analyze_pr_task(ctx: dict, pr_url: str) -> dict:
     result: dict = {}
     try:
         result = await graph.ainvoke(
-            {"pr_url": pr_url, "diff": "", "observations": [], "metadata": {}}
+            {"pr_url": pr_url, "diff": "", "findings": [], "metadata": {}}
         )
         duration_ms = round((time.perf_counter() - start) * 1000, 2)
         logger.info("task completed", duration_ms=duration_ms)
     except PullRequestDiffError as exc:
+        final_status = ReviewStatus.failed
+        result = _failure_result(pr_url, exc)
+        duration_ms = round((time.perf_counter() - start) * 1000, 2)
+        logger.error("task failed", duration_ms=duration_ms, error_code=exc.code)
+    except PullRequestReviewError as exc:
         final_status = ReviewStatus.failed
         result = _failure_result(pr_url, exc)
         duration_ms = round((time.perf_counter() - start) * 1000, 2)
@@ -76,7 +82,7 @@ async def analyze_pr_task(ctx: dict, pr_url: str) -> dict:
 
 
 def _failure_result(pr_url: str, error: Exception) -> dict[str, Any]:
-    if isinstance(error, PullRequestDiffError):
+    if isinstance(error, PullRequestDiffError | PullRequestReviewError):
         error_payload = error.to_dict()
     else:
         error_payload = {
@@ -88,7 +94,7 @@ def _failure_result(pr_url: str, error: Exception) -> dict[str, Any]:
     return {
         "pr_url": pr_url,
         "diff": "",
-        "observations": [],
+        "findings": [],
         "metadata": {},
         "error": error_payload,
     }

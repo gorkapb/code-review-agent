@@ -1,7 +1,10 @@
 import httpx
 import pytest
 
-from src.agent import pr_diff as pr_diff_module
+from src.agent.schemas import PullRequestDiff
+from src.agent.services import (
+    github_pull_request_diff as github_pull_request_diff_module,
+)
 
 
 def _pull_request_payload() -> dict:
@@ -64,13 +67,15 @@ async def test_fetch_pull_request_diff_formats_diff_and_metadata(monkeypatch):
     def create_client(api_base_url: str) -> httpx.AsyncClient:
         return httpx.AsyncClient(
             base_url=api_base_url,
-            headers=pr_diff_module._github_headers(),
+            headers=github_pull_request_diff_module._github_headers(),
             transport=transport,
         )
 
-    monkeypatch.setattr(pr_diff_module, "_create_github_client", create_client)
+    monkeypatch.setattr(
+        github_pull_request_diff_module, "_create_github_client", create_client
+    )
 
-    result = await pr_diff_module.fetch_pull_request_diff(
+    result = await github_pull_request_diff_module.fetch_pull_request_diff(
         "https://github.com/acme/widget/pull/42"
     )
 
@@ -83,17 +88,18 @@ async def test_fetch_pull_request_diff_formats_diff_and_metadata(monkeypatch):
     assert "rename from src/widget.py" in result.diff
     assert "@@ -1,2 +1,5 @@" in result.diff
 
-    assert result.metadata["repository"] == "acme/widget"
-    assert result.metadata["pull_number"] == 42
-    assert result.metadata["files_changed"] == 1
-    assert result.metadata["additions"] == 5
-    assert result.metadata["deletions"] == 2
-    assert result.metadata["files_without_patch"] == 0
-    assert result.metadata["files"][0]["previous_filename"] == "src/widget.py"
+    assert isinstance(result, PullRequestDiff)
+    assert result.metadata.repository == "acme/widget"
+    assert result.metadata.pull_number == 42
+    assert result.metadata.files_changed == 1
+    assert result.metadata.additions == 5
+    assert result.metadata.deletions == 2
+    assert result.metadata.files_without_patch == 0
+    assert result.metadata.files[0].previous_filename == "src/widget.py"
 
 
 def test_parse_github_pr_url_accepts_files_tab_urls():
-    pr_ref = pr_diff_module._parse_github_pr_url(
+    pr_ref = github_pull_request_diff_module._parse_github_pr_url(
         "https://github.com/acme/widget/pull/42/files"
     )
 
@@ -105,10 +111,12 @@ def test_parse_github_pr_url_accepts_files_tab_urls():
 
 def test_parse_github_pr_url_rejects_non_pr_urls():
     with pytest.raises(
-        pr_diff_module.PullRequestDiffError,
+        github_pull_request_diff_module.PullRequestDiffError,
         match="Expected a GitHub pull request URL",
     ) as exc_info:
-        pr_diff_module._parse_github_pr_url("https://github.com/acme/widget/issues/42")
+        github_pull_request_diff_module._parse_github_pr_url(
+            "https://github.com/acme/widget/issues/42"
+        )
 
     assert exc_info.value.code == "invalid_pr_url"
 
@@ -130,19 +138,21 @@ async def test_get_paginated_json_fetches_all_pages():
     async with httpx.AsyncClient(
         base_url="https://api.github.com", transport=transport
     ) as client:
-        files = await pr_diff_module._get_paginated_json(
+        files = await github_pull_request_diff_module._get_paginated_json(
             client, "/repos/a/b/pulls/1/files"
         )
 
     assert requested_pages == ["1", "2"]
-    assert len(files) == pr_diff_module.GITHUB_PER_PAGE + 1
+    assert len(files) == github_pull_request_diff_module.GITHUB_PER_PAGE + 1
 
 
 def test_github_headers_use_available_token(monkeypatch):
-    monkeypatch.setattr(pr_diff_module.settings, "github_token", "secret-token")
-    monkeypatch.setattr(pr_diff_module.settings, "gh_token", "")
+    monkeypatch.setattr(
+        github_pull_request_diff_module.settings, "github_token", "secret-token"
+    )
+    monkeypatch.setattr(github_pull_request_diff_module.settings, "gh_token", "")
 
-    headers = pr_diff_module._github_headers()
+    headers = github_pull_request_diff_module._github_headers()
 
     assert headers["Authorization"] == "Bearer secret-token"
 
@@ -159,10 +169,14 @@ async def test_fetch_pull_request_diff_raises_clear_error_for_missing_pr(
     def create_client(api_base_url: str) -> httpx.AsyncClient:
         return httpx.AsyncClient(base_url=api_base_url, transport=transport)
 
-    monkeypatch.setattr(pr_diff_module, "_create_github_client", create_client)
+    monkeypatch.setattr(
+        github_pull_request_diff_module, "_create_github_client", create_client
+    )
 
-    with pytest.raises(pr_diff_module.PullRequestDiffError) as exc_info:
-        await pr_diff_module.fetch_pull_request_diff(
+    with pytest.raises(
+        github_pull_request_diff_module.PullRequestDiffError
+    ) as exc_info:
+        await github_pull_request_diff_module.fetch_pull_request_diff(
             "https://github.com/acme/widget/pull/999"
         )
 

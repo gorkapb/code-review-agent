@@ -1,21 +1,20 @@
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import ParseResult, urlparse
 
 import httpx
 
+from src.agent.schemas import (
+    PullRequestDiff,
+    PullRequestFileMetadata,
+    PullRequestMetadata,
+    PullRequestRef,
+)
 from src.config import settings
 
 GITHUB_API_VERSION = "2022-11-28"
 GITHUB_TIMEOUT_SECONDS = 15.0
 GITHUB_PER_PAGE = 100
-
-
-@dataclass(frozen=True)
-class PullRequestDiff:
-    diff: str
-    metadata: dict[str, Any]
 
 
 class PullRequestDiffError(Exception):
@@ -34,18 +33,6 @@ class PullRequestDiffError(Exception):
         if self.status_code is not None:
             error["status_code"] = self.status_code
         return error
-
-
-@dataclass(frozen=True)
-class PullRequestRef:
-    owner: str
-    repo: str
-    number: int
-    api_base_url: str
-
-    @property
-    def full_name(self) -> str:
-        return f"{self.owner}/{self.repo}"
 
 
 async def fetch_pull_request_diff(pr_url: str) -> PullRequestDiff:
@@ -326,53 +313,51 @@ def _build_metadata(
     pr_ref: PullRequestRef,
     pull_request: dict[str, Any],
     files: list[dict[str, Any]],
-) -> dict[str, Any]:
+) -> PullRequestMetadata:
     changed_files = int(pull_request.get("changed_files") or len(files))
     additions = int(pull_request.get("additions") or 0)
     deletions = int(pull_request.get("deletions") or 0)
 
-    return {
-        "pr_url": pr_url,
-        "repository": pr_ref.full_name,
-        "owner": pr_ref.owner,
-        "repo": pr_ref.repo,
-        "pull_number": pr_ref.number,
-        "title": pull_request.get("title"),
-        "author": _nested_get(pull_request, "user", "login"),
-        "state": pull_request.get("state"),
-        "draft": bool(pull_request.get("draft", False)),
-        "html_url": pull_request.get("html_url"),
-        "api_url": pull_request.get("url"),
-        "base_ref": _nested_get(pull_request, "base", "ref"),
-        "base_sha": _nested_get(pull_request, "base", "sha"),
-        "head_ref": _nested_get(pull_request, "head", "ref"),
-        "head_sha": _nested_get(pull_request, "head", "sha"),
-        "merge_commit_sha": pull_request.get("merge_commit_sha"),
-        "commits": pull_request.get("commits"),
-        "files_changed": changed_files,
-        "changed_files": changed_files,
-        "additions": additions,
-        "deletions": deletions,
-        "files_without_patch": sum(1 for file in files if not file.get("patch")),
-        "files": [_file_metadata(file) for file in files],
-        "fetched_at": datetime.now(UTC).isoformat(),
-    }
+    return PullRequestMetadata(
+        pr_url=pr_url,
+        repository=pr_ref.full_name,
+        owner=pr_ref.owner,
+        repo=pr_ref.repo,
+        pull_number=pr_ref.number,
+        title=pull_request.get("title"),
+        author=_nested_get(pull_request, "user", "login"),
+        state=pull_request.get("state"),
+        draft=bool(pull_request.get("draft", False)),
+        html_url=pull_request.get("html_url"),
+        api_url=pull_request.get("url"),
+        base_ref=_nested_get(pull_request, "base", "ref"),
+        base_sha=_nested_get(pull_request, "base", "sha"),
+        head_ref=_nested_get(pull_request, "head", "ref"),
+        head_sha=_nested_get(pull_request, "head", "sha"),
+        merge_commit_sha=pull_request.get("merge_commit_sha"),
+        commits=pull_request.get("commits"),
+        files_changed=changed_files,
+        changed_files=changed_files,
+        additions=additions,
+        deletions=deletions,
+        files_without_patch=sum(1 for file in files if not file.get("patch")),
+        files=[_file_metadata(file) for file in files],
+        fetched_at=datetime.now(UTC),
+    )
 
 
-def _file_metadata(file: dict[str, Any]) -> dict[str, Any]:
-    metadata = {
-        "filename": file.get("filename"),
-        "status": file.get("status"),
-        "additions": file.get("additions", 0),
-        "deletions": file.get("deletions", 0),
-        "changes": file.get("changes", 0),
-        "patch_available": bool(file.get("patch")),
-        "blob_url": file.get("blob_url"),
-        "raw_url": file.get("raw_url"),
-    }
-    if file.get("previous_filename"):
-        metadata["previous_filename"] = file["previous_filename"]
-    return metadata
+def _file_metadata(file: dict[str, Any]) -> PullRequestFileMetadata:
+    return PullRequestFileMetadata(
+        filename=file.get("filename"),
+        status=file.get("status"),
+        additions=file.get("additions", 0),
+        deletions=file.get("deletions", 0),
+        changes=file.get("changes", 0),
+        patch_available=bool(file.get("patch")),
+        blob_url=file.get("blob_url"),
+        raw_url=file.get("raw_url"),
+        previous_filename=file.get("previous_filename"),
+    )
 
 
 def _nested_get(data: dict[str, Any], *keys: str) -> Any:
