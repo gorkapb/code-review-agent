@@ -10,13 +10,16 @@ from src.agent.services.github_pull_request_diff import PullRequestDiffError
 from src.agent.services.pull_request_review import PullRequestReviewError
 from src.config import settings
 from src.observability.langfuse import (
-    create_trace_id,
     flush_langfuse,
     propagate_langfuse_attributes,
     shutdown_langfuse,
     start_langfuse_observation,
 )
 from src.observability.logging import configure_logging
+from src.observability.telemetry_context import (
+    TelemetryContext,
+    langfuse_trace_metadata,
+)
 from src.storage.database import AsyncSessionFactory
 from src.storage.models import Review, ReviewStatus
 
@@ -34,13 +37,25 @@ async def shutdown(ctx: dict) -> None:
     logger.info("worker stopped")
 
 
-async def analyze_pr_task(ctx: dict, pr_url: str) -> dict:
+async def analyze_pr_task(
+    ctx: dict,
+    pr_url: str,
+    *,
+    telemetry_context: TelemetryContext,
+) -> dict:
     job_id: str = ctx["job_id"]
     db_factory = ctx["db_factory"]
+    trace_metadata = langfuse_trace_metadata(
+        pr_url=pr_url,
+        telemetry_context=telemetry_context,
+    )
 
     structlog.contextvars.clear_contextvars()
     structlog.contextvars.bind_contextvars(
-        job_id=job_id, pr_url=pr_url, task="analyze_pr"
+        job_id=job_id,
+        pr_url=pr_url,
+        request_id=telemetry_context["request_id"],
+        task="analyze_pr",
     )
 
     async with db_factory() as session:
@@ -58,20 +73,19 @@ async def analyze_pr_task(ctx: dict, pr_url: str) -> dict:
     start = time.perf_counter()
     final_status = ReviewStatus.complete
     result: dict = {}
-    trace_id = create_trace_id(job_id)
 
     try:
         with start_langfuse_observation(
             name="review-pull-request",
             as_type="agent",
             input={"job_id": job_id, "pr_url": pr_url},
-            metadata={"job_id": job_id, "pr_url": pr_url},
-            trace_id=trace_id,
+            metadata=trace_metadata,
+            trace_id=telemetry_context["langfuse_trace_id"],
         ) as observation:
             try:
                 with propagate_langfuse_attributes(
                     trace_name="review-pull-request",
-                    metadata={"job_id": job_id, "pr_url": pr_url},
+                    metadata=trace_metadata,
                     tags=["code-review-agent", "pull-request-review"],
                 ):
                     result = await graph.ainvoke(

@@ -1,6 +1,30 @@
 from src.agent.services.github_pull_request_diff import PullRequestDiffError
 from src.agent.services.pull_request_review import PullRequestReviewError
+from src.observability.telemetry_context import langfuse_trace_metadata
 from src.worker.worker import _failure_result
+
+
+def test_trace_metadata_includes_propagated_context():
+    metadata = langfuse_trace_metadata(
+        pr_url="https://github.com/acme/widget/pull/42",
+        telemetry_context={
+            "job_id": "job-123",
+            "request_id": "req-123",
+            "queued_at": "2026-05-24T12:34:56+00:00",
+            "otel_trace_id": "a" * 32,
+            "otel_parent_span_id": "b" * 16,
+            "ignored": "value",
+        },
+    )
+
+    assert metadata == {
+        "job_id": "job-123",
+        "pr_url": "https://github.com/acme/widget/pull/42",
+        "request_id": "req-123",
+        "queued_at": "2026-05-24T12:34:56+00:00",
+        "otel_trace_id": "a" * 32,
+        "otel_parent_span_id": "b" * 16,
+    }
 
 
 def test_failure_result_exposes_pull_request_diff_errors():
