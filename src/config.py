@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     langfuse_capture_content: bool = False
     langfuse_debug: bool = False
     langfuse_sample_rate: float = Field(default=1.0, ge=0.0, le=1.0)
+    otel_tracing_enabled: bool = True
+    otel_exporter_otlp_endpoint: str = ""
+    otel_exporter_otlp_traces_endpoint: str = ""
+    otel_exporter_otlp_metrics_endpoint: str = ""
+    otel_exporter_otlp_headers: str = ""
+    otel_exporter_otlp_timeout: float = 10.0
+    otel_metric_export_interval_millis: float = 60000.0
+    otel_sample_rate: float = Field(default=1.0, ge=0.0, le=1.0)
     openai_api_key: str = ""
     eval_judge_model: str = "gpt-4o-mini"
     postgres_user: str = "postgres"

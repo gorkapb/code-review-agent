@@ -17,12 +17,17 @@ from src.observability.langfuse import (
     start_langfuse_observation,
 )
 from src.observability.logging import configure_logging
-from src.observability.otel import start_span
+from src.observability.otel import (
+    configure_otel,
+    record_span_error,
+    shutdown_otel,
+    start_worker_span,
+)
 from src.observability.telemetry_context import (
     TelemetryContext,
     langfuse_trace_metadata,
 )
-from src.storage.database import AsyncSessionFactory
+from src.storage.database import AsyncSessionFactory, engine
 from src.storage.models import Review, ReviewStatus
 
 logger = structlog.get_logger(__name__)
@@ -30,12 +35,14 @@ logger = structlog.get_logger(__name__)
 
 async def startup(ctx: dict) -> None:
     configure_logging()
+    configure_otel(sqlalchemy_engine=engine)
     ctx["db_factory"] = AsyncSessionFactory
     logger.info("worker started")
 
 
 async def shutdown(ctx: dict) -> None:
     shutdown_langfuse()
+    shutdown_otel()
     logger.info("worker stopped")
 
 
@@ -77,11 +84,9 @@ async def analyze_pr_task(
     result: dict = {}
 
     try:
-        with start_span(
-            "analyze-pr-task",
+        with start_worker_span(
             pr_url=pr_url,
             telemetry_context=telemetry_context,
-            continue_from_context=True,
         ) as span:
             with start_langfuse_observation(
                 name="review-pull-request",
@@ -109,6 +114,7 @@ async def analyze_pr_task(
                 except PullRequestDiffError as exc:
                     final_status = ReviewStatus.failed
                     result = _failure_result(pr_url, exc)
+                    record_span_error(span, exc, code=exc.code)
                     duration_ms = round((time.perf_counter() - start) * 1000, 2)
                     logger.error(
                         "task failed", duration_ms=duration_ms, error_code=exc.code
@@ -116,6 +122,7 @@ async def analyze_pr_task(
                 except PullRequestReviewError as exc:
                     final_status = ReviewStatus.failed
                     result = _failure_result(pr_url, exc)
+                    record_span_error(span, exc, code=exc.code)
                     duration_ms = round((time.perf_counter() - start) * 1000, 2)
                     logger.error(
                         "task failed", duration_ms=duration_ms, error_code=exc.code

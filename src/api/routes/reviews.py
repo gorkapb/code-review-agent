@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.observability.otel import start_span
+from src.observability.otel import start_enqueue_span
 from src.observability.telemetry_context import (
     build_telemetry_context,
 )
@@ -62,11 +62,9 @@ async def enqueue_review(
         queued_at=datetime.now(UTC),
         request_id=request.state.request_id,
     )
-    with start_span(
-        "enqueue-pr-review",
+    with start_enqueue_span(
         pr_url=body.pr_url,
         telemetry_context=telemetry_context,
-        inject_context=True,
     ):
         job = await pool.enqueue_job(
             "analyze_pr_task",

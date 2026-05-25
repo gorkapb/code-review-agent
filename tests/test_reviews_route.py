@@ -45,20 +45,15 @@ async def test_enqueue_review_passes_telemetry_context_to_arq(monkeypatch):
     monkeypatch.setattr(reviews, "build_telemetry_context", build_context)
 
     @contextmanager
-    def start_span(
-        name: str,
+    def start_enqueue_span(
         *,
         pr_url: str,
         telemetry_context: dict[str, Any],
-        inject_context: bool = False,
-        continue_from_context: bool = False,
     ):
-        span_calls.append(
-            (name, pr_url, telemetry_context, inject_context, continue_from_context)
-        )
+        span_calls.append((pr_url, telemetry_context))
         yield
 
-    monkeypatch.setattr(reviews, "start_span", start_span)
+    monkeypatch.setattr(reviews, "start_enqueue_span", start_enqueue_span)
 
     response = await reviews.enqueue_review(
         reviews.ReviewRequest(pr_url="https://github.com/acme/widget/pull/42"),
@@ -69,11 +64,8 @@ async def test_enqueue_review_passes_telemetry_context_to_arq(monkeypatch):
     assert response == reviews.ReviewResponse(job_id=job_id)
     assert span_calls == [
         (
-            "enqueue-pr-review",
             "https://github.com/acme/widget/pull/42",
             telemetry_context,
-            True,
-            False,
         )
     ]
     assert pool.calls == [
@@ -114,20 +106,15 @@ async def test_enqueue_review_rejects_duplicate_arq_job(monkeypatch):
     monkeypatch.setattr(reviews, "build_telemetry_context", build_context)
 
     @contextmanager
-    def start_span(
-        name: str,
+    def start_enqueue_span(
         *,
         pr_url: str,
         telemetry_context: dict[str, Any],
-        inject_context: bool = False,
-        continue_from_context: bool = False,
     ):
-        span_calls.append(
-            (name, pr_url, telemetry_context, inject_context, continue_from_context)
-        )
+        span_calls.append((pr_url, telemetry_context))
         yield
 
-    monkeypatch.setattr(reviews, "start_span", start_span)
+    monkeypatch.setattr(reviews, "start_enqueue_span", start_enqueue_span)
 
     with pytest.raises(HTTPException) as exc_info:
         await reviews.enqueue_review(
@@ -139,11 +126,8 @@ async def test_enqueue_review_rejects_duplicate_arq_job(monkeypatch):
     assert exc_info.value.status_code == status.HTTP_409_CONFLICT
     assert span_calls == [
         (
-            "enqueue-pr-review",
             "https://github.com/acme/widget/pull/42",
             pool.calls[0][2]["telemetry_context"],
-            True,
-            False,
         )
     ]
     assert pool.calls[0][2]["_job_id"] == job_id
