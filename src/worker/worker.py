@@ -82,7 +82,7 @@ async def analyze_pr_task(
             pr_url=pr_url,
             telemetry_context=telemetry_context,
             continue_from_context=True,
-        ):
+        ) as span:
             with start_langfuse_observation(
                 name="review-pull-request",
                 as_type="agent",

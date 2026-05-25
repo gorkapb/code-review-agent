@@ -43,6 +43,10 @@ ArqPool = Annotated[ArqRedis, Depends(_get_arq_pool)]
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
+def new_job_id() -> str:
+    return uuid4().hex
+
+
 @router.post(
     "",
     response_model=ReviewResponse,
@@ -52,7 +56,7 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 async def enqueue_review(
     body: ReviewRequest, request: Request, pool: ArqPool
 ) -> ReviewResponse:
-    job_id = uuid4().hex
+    job_id = new_job_id()
     telemetry_context = build_telemetry_context(
         job_id=job_id,
         queued_at=datetime.now(UTC),
