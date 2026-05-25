@@ -28,6 +28,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         structlog.contextvars.clear_contextvars()
 
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        request.state.request_id = request_id
         structlog.contextvars.bind_contextvars(
             request_id=request_id,
             http_method=request.method,

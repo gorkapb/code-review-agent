@@ -162,6 +162,32 @@ Each job uses a deterministic trace ID derived from the ARQ job ID, adds job and
 
 By default, `LANGFUSE_CAPTURE_CONTENT=false` avoids sending full PR diffs and model outputs to Langfuse. Set it to `true` only when the reviewed code can be stored in your Langfuse project; API keys, tokens, passwords, emails, phone numbers, and card-like numbers are still masked before export.
 
+## OpenTelemetry telemetry
+
+OpenTelemetry is configured in code for API, queue, worker, HTTP client, and database timing. FastAPI, HTTPX, and SQLAlchemy are instrumented automatically; the ARQ enqueue and worker handoff use manual spans so the worker continues the API trace through the serialized job context. Queue wait time is recorded as `code_review.queue.latency`, and job lifecycle metrics are recorded as `code_review.jobs.started`, `code_review.jobs.completed`, `code_review.jobs.failed`, and `code_review.job.duration`.
+
+To export traces and metrics, point the OTLP HTTP exporter at a collector:
+
+```bash
+OTEL_ENABLED=true
+OTEL_TRACES_ENABLED=true
+OTEL_METRICS_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+# or set signal-specific endpoints:
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces
+OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://otel-collector:4318/v1/metrics
+OTEL_SAMPLE_RATE=1.0
+OTEL_METRIC_EXPORT_INTERVAL_MILLIS=60000.0
+```
+
+`OTEL_EXPORTER_OTLP_HEADERS` is also supported for hosted backends that require auth headers. `OTEL_TRACING_ENABLED` is still accepted as a legacy alias for `OTEL_ENABLED`. Without an OTLP endpoint, spans and metrics are still created for local propagation tests but no exporter is attached.
+
+## Observability boundary
+
+OpenTelemetry is used for operational telemetry: API latency, enqueue duration, queue latency, worker duration, database spans, HTTP client spans, failures, retries, and service-level metrics.
+
+Langfuse is used for agent telemetry: graph/node observations, prompts, model inputs and outputs, generations, token usage, cost tracking, and review-quality debugging.
+
 ## Status
 
 In active development. MVP target: **end of May 2026**. See [Roadmap](#roadmap) for

@@ -8,6 +8,11 @@ from fastapi import FastAPI
 from src.api.middleware import RequestLoggingMiddleware
 from src.api.routes import router
 from src.config import settings
+from src.observability.otel import (
+    configure_otel,
+    instrument_fastapi_app,
+    shutdown_otel,
+)
 from src.storage.database import engine
 from src.storage.models import Base
 
@@ -16,6 +21,7 @@ logger = structlog.get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    configure_otel(sqlalchemy_engine=engine)
     async with engine.begin() as conn:
         await conn.run_sync(
             Base.metadata.create_all
@@ -25,6 +31,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
     await app.state.arq_pool.aclose()
     await engine.dispose()
+    shutdown_otel()
     logger.info("application stopped")
 
 
@@ -32,6 +39,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Code Review Agent", version="0.1.0", lifespan=lifespan)
     app.add_middleware(RequestLoggingMiddleware)
     app.include_router(router)
+    instrument_fastapi_app(app)
     return app
 
 

@@ -1,4 +1,6 @@
+from datetime import UTC, datetime
 from typing import Annotated, Any
+from uuid import uuid4
 
 import structlog
 from arq.connections import ArqRedis
@@ -7,6 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.observability.otel import start_enqueue_span
+from src.observability.telemetry_context import (
+    build_telemetry_context,
+)
 from src.storage.database import get_db
 from src.storage.models import Review, ReviewStatus
 
@@ -37,21 +43,42 @@ ArqPool = Annotated[ArqRedis, Depends(_get_arq_pool)]
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
+def new_job_id() -> str:
+    return uuid4().hex
+
+
 @router.post(
     "",
     response_model=ReviewResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Enqueue a PR review",
 )
-async def enqueue_review(body: ReviewRequest, pool: ArqPool) -> ReviewResponse:
-    job = await pool.enqueue_job("analyze_pr_task", body.pr_url)
+async def enqueue_review(
+    body: ReviewRequest, request: Request, pool: ArqPool
+) -> ReviewResponse:
+    job_id = new_job_id()
+    telemetry_context = build_telemetry_context(
+        job_id=job_id,
+        queued_at=datetime.now(UTC),
+        request_id=request.state.request_id,
+    )
+    with start_enqueue_span(
+        pr_url=body.pr_url,
+        telemetry_context=telemetry_context,
+    ):
+        job = await pool.enqueue_job(
+            "analyze_pr_task",
+            body.pr_url,
+            telemetry_context=telemetry_context,
+            _job_id=job_id,
+        )
     if job is None:
-        logger.warning("duplicate job rejected", pr_url=body.pr_url)
+        logger.warning("duplicate job rejected", job_id=job_id, pr_url=body.pr_url)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A job for this PR is already queued.",
         )
-    return ReviewResponse(job_id=job.job_id)
+    return ReviewResponse(job_id=job_id)
 
 
 @router.get(
