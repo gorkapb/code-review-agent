@@ -164,12 +164,14 @@ By default, `LANGFUSE_CAPTURE_CONTENT=false` avoids sending full PR diffs and mo
 
 ## OpenTelemetry telemetry
 
-OpenTelemetry is configured in code for API, queue, worker, HTTP client, and database timing. FastAPI, HTTPX, and SQLAlchemy are instrumented automatically; the ARQ enqueue and worker handoff use manual spans so the worker continues the API trace through the serialized job context. Queue wait time is also recorded as a custom histogram metric, `code_review.queue.latency`, in seconds.
+OpenTelemetry is configured in code for API, queue, worker, HTTP client, and database timing. FastAPI, HTTPX, and SQLAlchemy are instrumented automatically; the ARQ enqueue and worker handoff use manual spans so the worker continues the API trace through the serialized job context. Queue wait time is recorded as `code_review.queue.latency`, and job lifecycle metrics are recorded as `code_review.jobs.started`, `code_review.jobs.completed`, `code_review.jobs.failed`, and `code_review.job.duration`.
 
 To export traces and metrics, point the OTLP HTTP exporter at a collector:
 
 ```bash
-OTEL_TRACING_ENABLED=true
+OTEL_ENABLED=true
+OTEL_TRACES_ENABLED=true
+OTEL_METRICS_ENABLED=true
 OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 # or set signal-specific endpoints:
 OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces
@@ -178,13 +180,13 @@ OTEL_SAMPLE_RATE=1.0
 OTEL_METRIC_EXPORT_INTERVAL_MILLIS=60000.0
 ```
 
-`OTEL_EXPORTER_OTLP_HEADERS` is also supported for hosted backends that require auth headers. Without an OTLP endpoint, spans and metrics are still created for local propagation tests but no exporter is attached.
+`OTEL_EXPORTER_OTLP_HEADERS` is also supported for hosted backends that require auth headers. `OTEL_TRACING_ENABLED` is still accepted as a legacy alias for `OTEL_ENABLED`. Without an OTLP endpoint, spans and metrics are still created for local propagation tests but no exporter is attached.
 
 ## Observability boundary
 
 OpenTelemetry is used for operational telemetry: API latency, enqueue duration, queue latency, worker duration, database spans, HTTP client spans, failures, retries, and service-level metrics.
 
-Use Langfuse is used for agent telemetry: graph/node observations, prompts, model inputs and outputs, generations, token usage, cost tracking, and review-quality debugging.
+Langfuse is used for agent telemetry: graph/node observations, prompts, model inputs and outputs, generations, token usage, cost tracking, and review-quality debugging.
 
 ## Status
 

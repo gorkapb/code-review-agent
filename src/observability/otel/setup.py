@@ -8,7 +8,6 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-from opentelemetry.metrics._internal import _ProxyMeterProvider
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -42,7 +41,7 @@ def configure_otel(*, sqlalchemy_engine: Any | None = None) -> None:
 
 
 def instrument_fastapi_app(app: Any) -> None:
-    if not settings.otel_tracing_enabled:
+    if not _traces_enabled():
         return
 
     FastAPIInstrumentor.instrument_app(
@@ -55,7 +54,7 @@ def instrument_fastapi_app(app: Any) -> None:
 def instrument_sqlalchemy(engine: Any) -> None:
     global _sqlalchemy_instrumented
 
-    if _sqlalchemy_instrumented or not settings.otel_tracing_enabled:
+    if _sqlalchemy_instrumented or not _traces_enabled():
         return
 
     sync_engine = getattr(engine, "sync_engine", engine)
@@ -81,7 +80,7 @@ def _configure_trace_provider() -> None:
         return
 
     _trace_provider_configured = True
-    if not settings.otel_tracing_enabled:
+    if not _traces_enabled():
         logger.info("otel tracing disabled")
         return
 
@@ -114,12 +113,12 @@ def _configure_meter_provider() -> None:
         return
 
     _meter_provider_configured = True
-    if not settings.otel_tracing_enabled:
+    if not _metrics_enabled():
         logger.info("otel metrics disabled")
         return
 
     current_provider = otel_metrics.get_meter_provider()
-    if not isinstance(current_provider, _ProxyMeterProvider):
+    if isinstance(current_provider, MeterProvider):
         logger.info("otel meter provider already configured")
         return
 
@@ -140,7 +139,7 @@ def _configure_meter_provider() -> None:
 def _instrument_httpx() -> None:
     global _httpx_instrumented
 
-    if _httpx_instrumented or not settings.otel_tracing_enabled:
+    if _httpx_instrumented or not _traces_enabled():
         return
 
     HTTPXClientInstrumentor().instrument()
@@ -219,6 +218,18 @@ def _resource() -> Resource:
             "deployment.environment.name": settings.env,
         }
     )
+
+
+def _otel_enabled() -> bool:
+    return settings.otel_enabled_effective
+
+
+def _traces_enabled() -> bool:
+    return _otel_enabled() and settings.otel_traces_enabled
+
+
+def _metrics_enabled() -> bool:
+    return _otel_enabled() and settings.otel_metrics_enabled
 
 
 def tracer() -> trace.Tracer:

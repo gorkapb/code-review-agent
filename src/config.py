@@ -23,7 +23,10 @@ class Settings(BaseSettings):
     langfuse_capture_content: bool = False
     langfuse_debug: bool = False
     langfuse_sample_rate: float = Field(default=1.0, ge=0.0, le=1.0)
-    otel_tracing_enabled: bool = True
+    otel_enabled: bool | None = None
+    otel_tracing_enabled: bool | None = None
+    otel_traces_enabled: bool = True
+    otel_metrics_enabled: bool = True
     otel_exporter_otlp_endpoint: str = ""
     otel_exporter_otlp_traces_endpoint: str = ""
     otel_exporter_otlp_metrics_endpoint: str = ""
@@ -52,6 +55,14 @@ class Settings(BaseSettings):
         return (
             self.langfuse_base_url or self.langfuse_host or "https://cloud.langfuse.com"
         ).rstrip("/")
+
+    @property
+    def otel_enabled_effective(self) -> bool:
+        if self.otel_enabled is not None:
+            return self.otel_enabled
+        if self.otel_tracing_enabled is not None:
+            return self.otel_tracing_enabled
+        return True
 
 
 settings = Settings()

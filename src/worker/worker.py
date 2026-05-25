@@ -19,6 +19,9 @@ from src.observability.langfuse import (
 from src.observability.logging import configure_logging
 from src.observability.otel import (
     configure_otel,
+    record_job_completed,
+    record_job_failed,
+    record_job_started,
     record_span_error,
     shutdown_otel,
     start_worker_span,
@@ -79,6 +82,7 @@ async def analyze_pr_task(
         await session.commit()
 
     logger.info("task started")
+    record_job_started()
     start = time.perf_counter()
     final_status = ReviewStatus.complete
     result: dict = {}
@@ -109,13 +113,17 @@ async def analyze_pr_task(
                                 "metadata": {},
                             }
                         )
-                    duration_ms = round((time.perf_counter() - start) * 1000, 2)
+                    duration_seconds = time.perf_counter() - start
+                    record_job_completed(duration_seconds)
+                    duration_ms = round(duration_seconds * 1000, 2)
                     logger.info("task completed", duration_ms=duration_ms)
                 except PullRequestDiffError as exc:
                     final_status = ReviewStatus.failed
                     result = _failure_result(pr_url, exc)
                     record_span_error(span, exc, code=exc.code)
-                    duration_ms = round((time.perf_counter() - start) * 1000, 2)
+                    duration_seconds = time.perf_counter() - start
+                    record_job_failed(duration_seconds, error_code=exc.code)
+                    duration_ms = round(duration_seconds * 1000, 2)
                     logger.error(
                         "task failed", duration_ms=duration_ms, error_code=exc.code
                     )
@@ -123,14 +131,18 @@ async def analyze_pr_task(
                     final_status = ReviewStatus.failed
                     result = _failure_result(pr_url, exc)
                     record_span_error(span, exc, code=exc.code)
-                    duration_ms = round((time.perf_counter() - start) * 1000, 2)
+                    duration_seconds = time.perf_counter() - start
+                    record_job_failed(duration_seconds, error_code=exc.code)
+                    duration_ms = round(duration_seconds * 1000, 2)
                     logger.error(
                         "task failed", duration_ms=duration_ms, error_code=exc.code
                     )
                 except Exception as exc:
                     final_status = ReviewStatus.failed
                     result = _failure_result(pr_url, exc)
-                    duration_ms = round((time.perf_counter() - start) * 1000, 2)
+                    duration_seconds = time.perf_counter() - start
+                    record_job_failed(duration_seconds)
+                    duration_ms = round(duration_seconds * 1000, 2)
                     logger.exception("task failed", duration_ms=duration_ms)
                     raise
                 finally:

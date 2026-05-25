@@ -3,6 +3,8 @@ import sys
 from typing import Any
 
 import structlog
+from opentelemetry import trace
+from opentelemetry.trace import format_span_id, format_trace_id
 from structlog.types import EventDict, Processor
 
 from src.config import settings
@@ -11,6 +13,14 @@ from src.config import settings
 def _add_service_context(_: Any, __: str, event_dict: EventDict) -> EventDict:
     event_dict.setdefault("service", settings.service_name)
     event_dict.setdefault("version", settings.service_version)
+    return event_dict
+
+
+def _add_otel_trace_context(_: Any, __: str, event_dict: EventDict) -> EventDict:
+    span_context = trace.get_current_span().get_span_context()
+    if span_context.is_valid:
+        event_dict.setdefault("trace_id", format_trace_id(span_context.trace_id))
+        event_dict.setdefault("span_id", format_span_id(span_context.span_id))
     return event_dict
 
 
@@ -31,6 +41,7 @@ def configure_logging() -> None:
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         structlog.processors.StackInfoRenderer(),
         _add_service_context,
+        _add_otel_trace_context,
     ]
 
     if is_production:
