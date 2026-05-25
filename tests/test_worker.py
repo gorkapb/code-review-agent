@@ -11,8 +11,6 @@ def test_trace_metadata_includes_propagated_context():
             "job_id": "job-123",
             "request_id": "req-123",
             "queued_at": "2026-05-24T12:34:56+00:00",
-            "otel_trace_id": "a" * 32,
-            "otel_parent_span_id": "b" * 16,
             "ignored": "value",
         },
     )
@@ -22,8 +20,6 @@ def test_trace_metadata_includes_propagated_context():
         "pr_url": "https://github.com/acme/widget/pull/42",
         "request_id": "req-123",
         "queued_at": "2026-05-24T12:34:56+00:00",
-        "otel_trace_id": "a" * 32,
-        "otel_parent_span_id": "b" * 16,
     }
 
 

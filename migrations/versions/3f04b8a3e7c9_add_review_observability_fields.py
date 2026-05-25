@@ -20,36 +20,22 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column(
-        "reviews", sa.Column("queued_at", sa.DateTime(timezone=True), nullable=True)
+    op.execute(
+        "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS queued_at TIMESTAMP WITH TIME ZONE"
     )
-    op.add_column(
-        "reviews", sa.Column("started_at", sa.DateTime(timezone=True), nullable=True)
+    op.execute(
+        "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS started_at TIMESTAMP WITH TIME ZONE"
     )
-    op.add_column(
-        "reviews", sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True)
+    op.execute(
+        "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITH TIME ZONE"
     )
-    op.add_column(
-        "reviews", sa.Column("error_code", sa.String(length=100), nullable=True)
+    op.execute(
+        "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS error_code VARCHAR(100)"
     )
-    op.add_column(
-        "reviews", sa.Column("otel_trace_id", sa.String(length=32), nullable=True)
-    )
-    op.add_column(
-        "reviews", sa.Column("langfuse_trace_id", sa.String(length=64), nullable=True)
-    )
-    op.add_column("reviews", sa.Column("langfuse_trace_url", sa.Text(), nullable=True))
-    op.create_index("ix_reviews_otel_trace_id", "reviews", ["otel_trace_id"])
-    op.create_index("ix_reviews_langfuse_trace_id", "reviews", ["langfuse_trace_id"])
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_index("ix_reviews_langfuse_trace_id", table_name="reviews")
-    op.drop_index("ix_reviews_otel_trace_id", table_name="reviews")
-    op.drop_column("reviews", "langfuse_trace_url")
-    op.drop_column("reviews", "langfuse_trace_id")
-    op.drop_column("reviews", "otel_trace_id")
     op.drop_column("reviews", "error_code")
     op.drop_column("reviews", "completed_at")
     op.drop_column("reviews", "started_at")

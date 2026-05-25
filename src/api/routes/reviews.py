@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from typing import Annotated, Any
+from uuid import uuid4
 
 import structlog
 from arq.connections import ArqRedis
@@ -8,10 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.observability.otel import start_span
 from src.observability.telemetry_context import (
     build_telemetry_context,
-    new_job_id,
-    new_langfuse_trace_id,
 )
 from src.storage.database import get_db
 from src.storage.models import Review, ReviewStatus
@@ -52,19 +52,24 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 async def enqueue_review(
     body: ReviewRequest, request: Request, pool: ArqPool
 ) -> ReviewResponse:
-    job_id = new_job_id()
+    job_id = uuid4().hex
     telemetry_context = build_telemetry_context(
         job_id=job_id,
         queued_at=datetime.now(UTC),
         request_id=request.state.request_id,
-        langfuse_trace_id=new_langfuse_trace_id(job_id),
     )
-    job = await pool.enqueue_job(
-        "analyze_pr_task",
-        body.pr_url,
+    with start_span(
+        "enqueue-pr-review",
+        pr_url=body.pr_url,
         telemetry_context=telemetry_context,
-        _job_id=job_id,
-    )
+        inject_context=True,
+    ):
+        job = await pool.enqueue_job(
+            "analyze_pr_task",
+            body.pr_url,
+            telemetry_context=telemetry_context,
+            _job_id=job_id,
+        )
     if job is None:
         logger.warning("duplicate job rejected", job_id=job_id, pr_url=body.pr_url)
         raise HTTPException(

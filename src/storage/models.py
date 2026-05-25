@@ -39,17 +39,6 @@ class Review(Base):
         nullable=True,
     )
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    otel_trace_id: Mapped[str | None] = mapped_column(
-        String(32),
-        nullable=True,
-        index=True,
-    )
-    langfuse_trace_id: Mapped[str | None] = mapped_column(
-        String(64),
-        nullable=True,
-        index=True,
-    )
-    langfuse_trace_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
