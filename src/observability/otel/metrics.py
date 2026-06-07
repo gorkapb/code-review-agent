@@ -122,7 +122,7 @@ def _job_attributes(
 
 
 def _metrics_enabled() -> bool:
-    return settings.otel_enabled_effective and settings.otel_metrics_enabled
+    return settings.otel_enabled and settings.otel_metrics_enabled
 
 
 def _queue_latency() -> Histogram:

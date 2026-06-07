@@ -14,7 +14,6 @@ from src.observability.otel import (
     shutdown_otel,
 )
 from src.storage.database import engine
-from src.storage.models import Base
 
 logger = structlog.get_logger(__name__)
 
@@ -22,10 +21,8 @@ logger = structlog.get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_otel(sqlalchemy_engine=engine)
-    async with engine.begin() as conn:
-        await conn.run_sync(
-            Base.metadata.create_all
-        )  # dev convenience; prod uses alembic
+    # Schema is owned by Alembic (`alembic upgrade head`), run as the
+    # pre-deploy step. The app never creates tables itself.
     app.state.arq_pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
     logger.info("application started")
     yield

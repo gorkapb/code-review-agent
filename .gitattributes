@@ -1,0 +1,7 @@
+# Normalize line endings: store text files with LF in the repo and check
+# them out with LF everywhere. Keeps ruff format / pre-commit consistent
+# across Linux, macOS, and Windows.
+* text=auto eol=lf
+
+# Lockfile is generated — keep diffs collapsed in reviews.
+uv.lock linguist-generated=true

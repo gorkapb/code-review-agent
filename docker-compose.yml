@@ -1,17 +1,40 @@
+# All config lives in .env (the single source of truth), shared by the api,
+# worker, and migrate services. Mirrors the api + worker split we run on Railway.
+x-app-base: &app-base
+  build: .
+  env_file: .env
+  # Map host.docker.internal to the host gateway so containers can reach services
+  # on the host — e.g. self-hosted Langfuse on :3000 (LANGFUSE_BASE_URL in .env).
+  # Needed on Linux; a no-op on Docker Desktop where it already resolves.
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
 services:
+  # One-shot: owns the schema, same as Railway's preDeployCommand. The api
+  # and worker wait for this to finish so they never race to migrate.
+  migrate:
+    <<: *app-base
+    command: uv run alembic upgrade head
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   app:
-    build: .
+    <<: *app-base
     ports:
       - "8000:8000"
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/code_review
-      REDIS_URL: redis://redis:6379
-    depends_on:
+    depends_on: &app-deps
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *app-base
+    command: uv run arq src.worker.worker.WorkerSettings
+    depends_on: *app-deps
 
   postgres:
     image: postgres:17-alpine

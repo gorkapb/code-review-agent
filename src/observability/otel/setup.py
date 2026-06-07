@@ -221,7 +221,7 @@ def _resource() -> Resource:
 
 
 def _otel_enabled() -> bool:
-    return settings.otel_enabled_effective
+    return settings.otel_enabled
 
 
 def _traces_enabled() -> bool:

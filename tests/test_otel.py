@@ -7,9 +7,11 @@ from src.config import settings
 from src.observability.logging import _add_otel_trace_context
 from src.observability.otel import start_enqueue_span, start_worker_span
 from src.observability.otel.setup import (
+    _metrics_enabled,
     _otlp_headers,
     _otlp_metrics_endpoint,
     _otlp_traces_endpoint,
+    _traces_enabled,
 )
 from src.observability.telemetry_context import build_telemetry_context
 
@@ -70,18 +72,20 @@ def test_log_processor_adds_current_trace_context():
     assert event["span_id"]
 
 
-def test_otel_enabled_prefers_new_flag(monkeypatch):
+def test_otel_disabled_gates_traces_and_metrics(monkeypatch):
     monkeypatch.setattr(settings, "otel_enabled", False)
-    monkeypatch.setattr(settings, "otel_tracing_enabled", True)
 
-    assert settings.otel_enabled_effective is False
+    assert _traces_enabled() is False
+    assert _metrics_enabled() is False
 
 
-def test_otel_enabled_falls_back_to_legacy_flag(monkeypatch):
-    monkeypatch.setattr(settings, "otel_enabled", None)
-    monkeypatch.setattr(settings, "otel_tracing_enabled", False)
+def test_otel_enabled_respects_per_signal_flags(monkeypatch):
+    monkeypatch.setattr(settings, "otel_enabled", True)
+    monkeypatch.setattr(settings, "otel_traces_enabled", True)
+    monkeypatch.setattr(settings, "otel_metrics_enabled", False)
 
-    assert settings.otel_enabled_effective is False
+    assert _traces_enabled() is True
+    assert _metrics_enabled() is False
 
 
 def test_otlp_traces_endpoint_prefers_specific_endpoint(monkeypatch):

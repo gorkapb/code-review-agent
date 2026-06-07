@@ -1,0 +1,16 @@
+# Railway config-as-code for the **worker** service.
+# In the worker service settings, set "Railway Config File" to this path.
+# Same Docker image as the api service, different start command.
+#
+# Give it the same DATABASE_URL / REDIS_URL / secrets as the api service
+# (use project-level shared variables to avoid duplicating them).
+# No healthcheck: the worker has no HTTP server. No preDeployCommand:
+# the api service owns migrations.
+
+[build]
+builder = "dockerfile"
+
+[deploy]
+startCommand = "uv run arq src.worker.worker.WorkerSettings"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

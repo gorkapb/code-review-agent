@@ -1,0 +1,24 @@
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# VCS & local
+.git/
+.gitignore
+.dockerignore
+
+# Env & secrets — never ship these into the build context
+.env
+.env.*
+
+# Tests & dev-only assets
+tests/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

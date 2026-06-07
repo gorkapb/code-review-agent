@@ -1,232 +1,114 @@
 # Code Review Agent
 
-> Production-grade AI agent that reviews GitHub Pull Requests with eval pipelines, observability, and cost tracking built in.
+> AI agent that reviews GitHub Pull Requests, with evals and observability built in.
 
 ## What it does
 
-Code Review Agent ingests a GitHub Pull Request and produces a structured review:
-potential bugs, security concerns, maintainability suggestions, and style observations.
-Each observation is tied to a specific file and line, with severity, explanation, and
-a suggested fix.
+Give it a GitHub PR URL and it produces a structured review — potential bugs,
+security concerns, maintainability suggestions, and style notes — each tied to a
+specific file and line with a severity, explanation, and suggested fix.
 
-Unlike most LLM-powered code review tools, this project treats production concerns
-as first-class: every run is traced and persisted, every model call is cost-tracked,
-and a regression eval suite runs on every commit against a curated dataset of real
-PRs with human reviews as ground truth.
+Every review runs as a background job: the API enqueues it, an ARQ worker runs the
+LangGraph agent, and the result is persisted in Postgres. Each run is traced
+(Langfuse for the agent, OpenTelemetry for the infrastructure) and model calls are
+cost-tracked.
 
-## Why this project
+## Quick start
 
-This is a portfolio project demonstrating how to ship AI systems that survive
-production: not just "the agent works on a sunny day", but instrumented, evaluated,
-multi-tenant, and cost-aware from day one. The goal is to make every architectural
-decision visible and defensible.
-
-## Getting started
-
-**Prerequisites:** Python 3.13+, [uv](https://docs.astral.sh/uv/)
+**Prerequisites:** Docker, an Anthropic API key.
 
 ```bash
-# Clone and install dependencies
-git clone https://github.com/gorkapb/code-review-agent.git
-cd code-review-agent
-uv sync --all-groups
-
-# Install pre-commit hooks (required before first commit)
-uv run pre-commit install
-
-# Apply database migrations
-uv run alembic upgrade head
-
-# Run the API server
-uv run python main.py
-
-# Run the ARQ worker
-uv run arq src.worker.worker.WorkerSettings
-```
-
-The server starts at `http://localhost:8000`. Hot-reload is enabled by default.
-
-Pre-commit runs `ruff` (lint + format) automatically on every `git commit`. To run it manually:
-
-```bash
-uv run pre-commit run --all-files
-```
-
-### Docker Compose (recommended for local development)
-
-Starts the API server together with Postgres and Redis — no local installs required beyond Docker.
-
-```bash
-cp .env.example .env
+cp .env.example .env          # then set ANTHROPIC_API_KEY (and optional tokens)
 docker compose up --build
 ```
 
-The API is available at `http://localhost:8000`. Data is persisted in named volumes (`postgres_data`, `redis_data`) across restarts.
+This starts four services: `migrate` (applies Alembic migrations, then exits),
+`app` (the API on http://localhost:8000), `worker` (the ARQ job runner), plus
+`postgres` and `redis`. Data persists in named volumes across restarts.
 
-Postgres and Redis are exposed to the host on non-default ports to avoid conflicts with other local stacks such as Langfuse:
-
-```bash
-DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:15432/code_review
-REDIS_URL=redis://127.0.0.1:16379
-```
-
-Inside Docker Compose, the app still connects to `postgres:5432` and `redis:6379`.
-
-To tear everything down and remove volumes:
+Tear everything down, including volumes:
 
 ```bash
 docker compose down -v
 ```
 
-## Running evals
-
-The eval suite uses [deepeval](https://deepeval.com) with LLM-as-judge metrics. Set an OpenAI key in `.env`; metrics use `gpt-4o-mini` as the judge by default.
+## API
 
 ```bash
-OPENAI_API_KEY=sk-...
-EVAL_JUDGE_MODEL=gpt-4o-mini
+# Enqueue a review — returns a job id
+curl -X POST http://localhost:8000/reviews \
+  -H 'content-type: application/json' \
+  -d '{"pr_url": "https://github.com/owner/repo/pull/123"}'
+# => {"job_id": "..."}
+
+# Poll for status / result
+curl http://localhost:8000/reviews/<job_id>
 ```
 
-**Run all metrics against the default dataset:**
+`GET /reviews/{job_id}` returns `queued` / `in_progress` while running and the
+full review once `complete` (or `failed`). Health check at `GET /health`.
+
+## Configuration
+
+All configuration lives in `.env` (see `.env.example` for the full list). Notable
+values:
+
+- `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` — the review model.
+- `GITHUB_TOKEN` — optional; raises GitHub rate limits and allows private repos.
+- `LANGFUSE_*` — Langfuse tracing; leave keys blank to run without it. Self-hosted
+  Langfuse on the host is reached from containers via `host.docker.internal`.
+- `OTEL_*` — OpenTelemetry export; without an OTLP endpoint, spans are created but
+  not exported.
+
+## Evals
+
+The eval suite uses [deepeval](https://deepeval.com) with LLM-as-judge metrics
+(`gpt-4o-mini` by default). Set `OPENAI_API_KEY` in `.env`, then:
 
 ```bash
-uv run python run_evals.py
-```
-
-**Run a subset of metrics:**
-
-```bash
+uv run python run_evals.py                         # all metrics, default dataset
 uv run python run_evals.py --metrics answer_relevancy code_review_quality
-```
-
-**Point at a different dataset:**
-
-```bash
 uv run python run_evals.py --dataset eval_dataset/my_cases.json
-```
-
-**List available metrics:**
-
-```bash
 uv run python run_evals.py --list-metrics
 ```
 
-Exit code is `0` if all cases pass, `1` if any fail — CI-friendly by default.
+Exit code is `0` if all cases pass, `1` otherwise. Metrics live in
+`src/eval/metrics.py` (register one in `METRICS_REGISTRY`); datasets are JSON or
+CSV files in `eval_dataset/`.
 
-### Adding a dataset
+## Observability
 
-Create a `.json` file (array of objects) in `eval_dataset/`. Required fields: `input`, `actual_output`. Optional: `expected_output`, `context`, `retrieval_context`.
+- **OpenTelemetry** — operational telemetry. FastAPI, HTTPX, and SQLAlchemy are
+  auto-instrumented; the ARQ enqueue and worker handoff use manual spans so the
+  worker continues the API trace. Job lifecycle and queue-latency metrics are
+  emitted under `code_review.*`. Export via OTLP by setting `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- **Langfuse** — agent telemetry. Each review job is one trace (deterministic id
+  from the job id) with nested observations for diff fetch, review generation, and
+  output formatting, plus token usage for cost tracking. `LANGFUSE_CAPTURE_CONTENT`
+  is `false` by default so diffs and outputs are not sent.
 
-```json
-[
-  {
-    "input": "the prompt or diff sent to the agent",
-    "actual_output": "the agent's response",
-    "expected_output": "what a good response looks like",
-    "context": ["background facts the response should be faithful to"]
-  }
-]
-```
-
-CSV is also supported — pass `--dataset path/to/file.csv`.
-
-### Adding a metric
-
-Open `src/eval/metrics.py`, define a function that returns a configured deepeval metric, then register it in `METRICS_REGISTRY`:
-
-```python
-def my_metric() -> SomeMetric:
-    return SomeMetric(threshold=0.7, model=JUDGE_MODEL, include_reason=True)
-
-METRICS_REGISTRY["my_metric"] = my_metric
-```
-
-That's it — it shows up in `--list-metrics` and can be selected via `--metrics my_metric`.
-
-### Changing the judge model
-
-Set `EVAL_JUDGE_MODEL` in `.env`. Any model supported by deepeval works (for example, `gpt-4o`).
-
-## Langfuse tracing
-
-The worker emits Langfuse traces for each PR review job when Langfuse credentials are configured:
+## Development
 
 ```bash
-LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_BASE_URL=https://cloud.langfuse.com
-LANGFUSE_TRACING_ENABLED=true
+uv sync --all-groups
+uv run pre-commit install   # runs ruff lint + format on every commit
+uv run pytest
 ```
 
-Each job uses a deterministic trace ID derived from the ARQ job ID, adds job and PR metadata as trace attributes, and records nested observations for GitHub diff fetch, Anthropic review generation, and output formatting. The Anthropic generation includes model name, model parameters, and token usage for Langfuse cost tracking.
-
-By default, `LANGFUSE_CAPTURE_CONTENT=false` avoids sending full PR diffs and model outputs to Langfuse. Set it to `true` only when the reviewed code can be stored in your Langfuse project; API keys, tokens, passwords, emails, phone numbers, and card-like numbers are still masked before export.
-
-## OpenTelemetry telemetry
-
-OpenTelemetry is configured in code for API, queue, worker, HTTP client, and database timing. FastAPI, HTTPX, and SQLAlchemy are instrumented automatically; the ARQ enqueue and worker handoff use manual spans so the worker continues the API trace through the serialized job context. Queue wait time is recorded as `code_review.queue.latency`, and job lifecycle metrics are recorded as `code_review.jobs.started`, `code_review.jobs.completed`, `code_review.jobs.failed`, and `code_review.job.duration`.
-
-To export traces and metrics, point the OTLP HTTP exporter at a collector:
-
-```bash
-OTEL_ENABLED=true
-OTEL_TRACES_ENABLED=true
-OTEL_METRICS_ENABLED=true
-OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
-# or set signal-specific endpoints:
-OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces
-OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://otel-collector:4318/v1/metrics
-OTEL_SAMPLE_RATE=1.0
-OTEL_METRIC_EXPORT_INTERVAL_MILLIS=60000.0
-```
-
-`OTEL_EXPORTER_OTLP_HEADERS` is also supported for hosted backends that require auth headers. `OTEL_TRACING_ENABLED` is still accepted as a legacy alias for `OTEL_ENABLED`. Without an OTLP endpoint, spans and metrics are still created for local propagation tests but no exporter is attached.
-
-## Observability boundary
-
-OpenTelemetry is used for operational telemetry: API latency, enqueue duration, queue latency, worker duration, database spans, HTTP client spans, failures, retries, and service-level metrics.
-
-Langfuse is used for agent telemetry: graph/node observations, prompts, model inputs and outputs, generations, token usage, cost tracking, and review-quality debugging.
-
-## Status
-
-In active development. MVP target: **end of May 2026**. See [Roadmap](#roadmap) for
-the current phase.
-
-## Architecture
-
-_Diagram coming in week 2 (ADR-002)._
+CI (GitHub Actions) runs ruff, builds the Docker Compose stack, and runs the test
+suite on every push and PR.
 
 ## Stack
 
-- **Backend:** FastAPI, async Python
-- **Database:** PostgreSQL (SQLAlchemy async), pgvector for repo context retrieval
-- **Cache / queue:** Redis + ARQ
-- **Agent framework:** LangGraph
-- **Eval:** LLM-as-Judge + heuristic metrics + regression dataset
-- **Observability:** structlog + OpenTelemetry + Prometheus
-- **Auth:** API keys + JWT, multi-tenant aware
-- **Infra:** Docker Compose (local), Railway or Fly.io (production)
-
-## Roadmap
-
-- [x] Repo scaffolding, ADR-001 (domain & stack rationale)
-- [x] FastAPI skeleton + Postgres + Redis via Docker Compose (week 1)
-- [x] Async job queue with ARQ — enqueue, poll, and cancel PR review jobs (week 2)
-- [x] Persistent review storage — PostgreSQL models, Alembic migrations, hybrid Postgres/Redis state (week 2)
-- [ ] Architecture diagram + LLM-as-Judge study (week 2)
-- [ ] Agent end-to-end: PR diff → structured review, instrumented from day one (week 3)
-- [ ] Eval pipeline + regression dataset of 20-50 PRs (week 4)
-- [ ] Multi-tenant auth, retry logic, public deployment (June)
-- [ ] Repo context retrieval with pgvector, advanced eval metrics (July)
-- [ ] Dashboard, drift detection, technical post (August)
-
-## Decision log
-
-Architectural decisions are documented as ADRs in [`docs/decisions/`](docs/decisions/).
+- **API:** FastAPI (async Python 3.13)
+- **Queue / worker:** Redis + ARQ
+- **Database:** PostgreSQL (async SQLAlchemy + Alembic)
+- **Agent:** LangGraph + Anthropic Claude
+- **Evals:** deepeval (LLM-as-judge)
+- **Observability:** structlog + OpenTelemetry + Langfuse
+- **Infra:** Docker Compose (local), Railway (production)
 
 ## Author
 
-Gorka Pineda. AI Engineer, currently building production multi-agent systems at
-Kyndryl. PhD candidate in Computer Science (UAB Barcelona).
-[LinkedIn](https://www.linkedin.com/in/gorka-pineda/)
+Gorka Pineda. AI Engineer at Kyndryl, PhD candidate in Computer Science (UAB
+Barcelona). [LinkedIn](https://www.linkedin.com/in/gorka-pineda/)
