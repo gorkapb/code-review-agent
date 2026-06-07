@@ -1,0 +1,22 @@
+# Railway config-as-code for the **api** service (default config file).
+# The worker service points at railway.worker.toml (set in its service
+# settings → "Railway Config File").
+#
+# Set these variables on the service (use Railway references for the URLs):
+#   DATABASE_URL = ${{Postgres.DATABASE_URL}}
+#   REDIS_URL    = ${{Redis.REDIS_URL}}
+#   ENV          = production
+# plus secrets: ANTHROPIC_API_KEY, GITHUB_TOKEN, LANGFUSE_* , OTEL_* ...
+
+[build]
+builder = "dockerfile"
+
+[deploy]
+# Migrations run here only (never on the worker) to avoid two services
+# racing to migrate on the same deploy.
+preDeployCommand = "uv run alembic upgrade head"
+startCommand = "uv run uvicorn src.api.app:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

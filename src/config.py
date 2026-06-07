@@ -4,6 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str = "postgresql://postgres:postgres@127.0.0.1:15432/code_review"
+    db_pool_size: int = 5
+    db_max_overflow: int = 5
     redis_url: str = "redis://127.0.0.1:16379"
     service_name: str = "code-review-agent"
     service_version: str = "0.1.0"
