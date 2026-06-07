@@ -71,7 +71,7 @@ jobs:
           python-version: "3.13"
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --group dev
 
       - name: Run tests
-        run: echo "No tests yet — add pytest here"
+        run: uv run pytest

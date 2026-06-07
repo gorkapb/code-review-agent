@@ -1,7 +1,7 @@
 [project]
 name = "code-review-agent"
 version = "0.1.0"
-description = "Add your description here"
+description = "AI agent that reviews GitHub pull requests, with evals and observability built in."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

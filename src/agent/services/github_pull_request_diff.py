@@ -127,7 +127,7 @@ def _github_headers() -> dict[str, str]:
         "User-Agent": "code-review-agent",
         "X-GitHub-Api-Version": GITHUB_API_VERSION,
     }
-    token = (settings.github_token or settings.gh_token).strip()
+    token = settings.github_token.strip()
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers

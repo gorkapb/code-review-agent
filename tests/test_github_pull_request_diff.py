@@ -150,7 +150,6 @@ def test_github_headers_use_available_token(monkeypatch):
     monkeypatch.setattr(
         github_pull_request_diff_module.settings, "github_token", "secret-token"
     )
-    monkeypatch.setattr(github_pull_request_diff_module.settings, "gh_token", "")
 
     headers = github_pull_request_diff_module._github_headers()
 
