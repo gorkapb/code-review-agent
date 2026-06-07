@@ -15,7 +15,6 @@ builder = "dockerfile"
 # Migrations run here only (never on the worker) to avoid two services
 # racing to migrate on the same deploy.
 preDeployCommand = "uv run alembic upgrade head"
-startCommand = "uv run uvicorn src.api.app:app --host 0.0.0.0 --port $PORT"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
