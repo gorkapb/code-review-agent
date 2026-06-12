@@ -70,16 +70,16 @@ async def analyze_pr_task(
         task="analyze_pr",
     )
 
+    # The API creates the row (with tenant_id) at enqueue time; here we only
+    # transition it to running. Tenant ownership is set by the API, never here.
     async with db_factory() as session:
-        review = Review(
-            id=job_id,
-            pr_url=pr_url,
-            status=ReviewStatus.running,
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
-        )
-        session.add(review)
-        await session.commit()
+        review = await session.get(Review, job_id)
+        if review is not None:
+            review.status = ReviewStatus.running
+            review.updated_at = datetime.now(UTC)
+            await session.commit()
+        else:
+            logger.warning("review row missing at task start", job_id=job_id)
 
     logger.info("task started")
     record_job_started()

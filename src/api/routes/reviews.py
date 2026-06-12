@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.security import CurrentTenant
 from src.observability.otel import start_enqueue_span
 from src.observability.telemetry_context import (
     build_telemetry_context,
@@ -54,25 +55,58 @@ def new_job_id() -> str:
     summary="Enqueue a PR review",
 )
 async def enqueue_review(
-    body: ReviewRequest, request: Request, pool: ArqPool
+    body: ReviewRequest,
+    request: Request,
+    tenant: CurrentTenant,
+    pool: ArqPool,
+    db: DbSession,
 ) -> ReviewResponse:
     job_id = new_job_id()
     telemetry_context = build_telemetry_context(
         job_id=job_id,
         queued_at=datetime.now(UTC),
         request_id=request.state.request_id,
+        tenant_id=tenant.id,
     )
-    with start_enqueue_span(
+
+    # Create the owning row before enqueueing so the worker — and every
+    # tenant-scoped read, including the brief queued window — always sees a
+    # tenant_id. The worker transitions this row pending -> running -> terminal.
+    # If enqueueing then fails, we must discard the row: a pending review no
+    # worker will ever pick up is worse than no review at all.
+    now = datetime.now(UTC)
+    review = Review(
+        id=job_id,
+        tenant_id=tenant.id,
         pr_url=body.pr_url,
-        telemetry_context=telemetry_context,
-    ):
-        job = await pool.enqueue_job(
-            "analyze_pr_task",
-            body.pr_url,
+        status=ReviewStatus.pending,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(review)
+    await db.commit()
+
+    try:
+        with start_enqueue_span(
+            pr_url=body.pr_url,
             telemetry_context=telemetry_context,
-            _job_id=job_id,
-        )
+        ):
+            job = await pool.enqueue_job(
+                "analyze_pr_task",
+                body.pr_url,
+                telemetry_context=telemetry_context,
+                _job_id=job_id,
+            )
+    except Exception:
+        await _discard_review(db, review)
+        logger.exception("failed to enqueue review job", job_id=job_id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not enqueue the review job. Please retry.",
+        ) from None
+
     if job is None:
+        await _discard_review(db, review)
         logger.warning("duplicate job rejected", job_id=job_id, pr_url=body.pr_url)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -81,14 +115,29 @@ async def enqueue_review(
     return ReviewResponse(job_id=job_id)
 
 
+async def _discard_review(db: AsyncSession, review: Review) -> None:
+    """Remove a review row whose job could not be enqueued, so it never orphans."""
+    await db.delete(review)
+    await db.commit()
+
+
 @router.get(
     "/{job_id}",
     response_model=JobStatusResponse,
     summary="Get the status of a review job",
 )
-async def get_review(job_id: str, pool: ArqPool, db: DbSession) -> JobStatusResponse:
+async def get_review(
+    job_id: str, tenant: CurrentTenant, pool: ArqPool, db: DbSession
+) -> JobStatusResponse:
     # Postgres-first: terminal states are permanent (no TTL)
     review: Review | None = await db.get(Review, job_id)
+    # Scope to the caller's tenant. Return 404 (not 403) so we never reveal that
+    # another tenant's job exists.
+    if review is not None and review.tenant_id != tenant.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job '{job_id}' not found.",
+        )
     if review is not None and review.status in (
         ReviewStatus.complete,
         ReviewStatus.failed,

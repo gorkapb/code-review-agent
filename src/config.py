@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     anthropic_api_base_url: str = "https://api.anthropic.com"
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-4-5-20251001"
+    # Server-side secret for HMAC-keyed hashing of API keys. Set per environment;
+    # rotating it invalidates every existing key (they'd need re-hashing/re-issue).
+    api_key_pepper: str = ""
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_base_url: str = ""
@@ -44,6 +47,17 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def _require_api_key_pepper_outside_dev(self) -> "Settings":
+        # An empty pepper silently degrades HMAC to a keyed hash with a public
+        # (empty) key — effectively plain SHA-256. Refuse to boot insecurely
+        # anywhere but local development, where convenience wins.
+        if self.env != "development" and not self.api_key_pepper:
+            raise ValueError(
+                "api_key_pepper must be set when env is not 'development'."
+            )
+        return self
 
     @property
     def database_async_url(self) -> str:
