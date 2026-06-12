@@ -26,6 +26,13 @@ This starts four services: `migrate` (applies Alembic migrations, then exits),
 `app` (the API on http://localhost:8000), `worker` (the ARQ job runner), plus
 `postgres` and `redis`. Data persists in named volumes across restarts.
 
+The API is authenticated, so issue yourself a tenant and API key before calling it:
+
+```bash
+docker compose exec app uv run python scripts/create_tenant.py "Acme Inc"
+# prints tenant_id and a one-time api_key — store the key, it cannot be recovered
+```
+
 Tear everything down, including volumes:
 
 ```bash
@@ -34,19 +41,31 @@ docker compose down -v
 
 ## API
 
+All `/reviews` endpoints require an API key, passed as a bearer token
+(`Authorization: Bearer <key>`, per RFC 6750). Keys are issued per tenant with
+`scripts/create_tenant.py`; jobs are scoped to the tenant that created them.
+
 ```bash
+KEY=cra_...   # the api_key printed by create_tenant.py
+
 # Enqueue a review — returns a job id
 curl -X POST http://localhost:8000/reviews \
+  -H "authorization: Bearer $KEY" \
   -H 'content-type: application/json' \
   -d '{"pr_url": "https://github.com/owner/repo/pull/123"}'
 # => {"job_id": "..."}
 
 # Poll for status / result
-curl http://localhost:8000/reviews/<job_id>
+curl http://localhost:8000/reviews/<job_id> \
+  -H "authorization: Bearer $KEY"
 ```
 
 `GET /reviews/{job_id}` returns `queued` / `in_progress` while running and the
-full review once `complete` (or `failed`). Health check at `GET /health`.
+full review once `complete` (or `failed`); it returns the same `404` whether the
+job doesn't exist or belongs to another tenant, so callers can't probe for other
+tenants' jobs. Requests with a missing or invalid key get `401`. Keys are stored
+only as an HMAC-SHA256 hash, never in plaintext. Health check at `GET /health`
+(unauthenticated).
 
 ## Configuration
 
@@ -54,6 +73,10 @@ All configuration lives in `.env` (see `.env.example` for the full list). Notabl
 values:
 
 - `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` — the review model.
+- `API_KEY_PEPPER` — server-side secret used to HMAC-hash tenant API keys.
+  Required whenever `ENV` is not `development`; the app refuses to boot without it.
+  Generate one with `python -c "import secrets; print(secrets.token_hex(32))"`.
+  Rotating it invalidates every existing key.
 - `GITHUB_TOKEN` — optional; raises GitHub rate limits and allows private repos.
 - `LANGFUSE_*` — Langfuse tracing; leave keys blank to run without it. Self-hosted
   Langfuse on the host is reached from containers via `host.docker.internal`.
