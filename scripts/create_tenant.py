@@ -26,9 +26,7 @@ async def main(name: str) -> None:
     now = datetime.now(UTC)
     tenant_id = uuid4().hex
     async with AsyncSessionFactory() as session:
-        session.add(
-            Tenant(id=tenant_id, name=name, is_active=True, created_at=now)
-        )
+        session.add(Tenant(id=tenant_id, name=name, is_active=True, created_at=now))
         # Flush so the tenant row exists before the key's FK references it.
         await session.flush()
         session.add(

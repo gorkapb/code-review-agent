@@ -28,9 +28,7 @@ def upgrade() -> None:
         "tenants",
         sa.Column("id", sa.String(length=32), nullable=False),
         sa.Column("name", sa.Text(), nullable=False),
-        sa.Column(
-            "is_active", sa.Boolean(), nullable=False, server_default=sa.true()
-        ),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -41,9 +39,7 @@ def upgrade() -> None:
         sa.Column("key_hash", sa.String(length=64), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["tenant_id"], ["tenants.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("key_hash"),
     )
