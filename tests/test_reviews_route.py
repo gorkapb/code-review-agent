@@ -59,10 +59,12 @@ async def test_enqueue_review_passes_telemetry_context_to_arq(monkeypatch):
         job_id: str,
         queued_at: Any,
         request_id: str,
+        tenant_id: str,
     ) -> dict[str, Any]:
         assert job_id == "a" * 32
         assert queued_at is not None
         assert request_id == "req-123"
+        assert tenant_id == TENANT.id
         return telemetry_context
 
     monkeypatch.setattr(reviews, "new_job_id", lambda: job_id)
@@ -124,14 +126,17 @@ async def test_enqueue_review_rejects_duplicate_arq_job(monkeypatch):
         job_id: str,
         queued_at: Any,
         request_id: str,
+        tenant_id: str,
     ) -> dict[str, Any]:
         assert job_id == "a" * 32
         assert queued_at is not None
         assert request_id == "req-123"
+        assert tenant_id == TENANT.id
         return {
             "job_id": job_id,
             "queued_at": "2026-05-24T12:34:56+00:00",
             "request_id": request_id,
+            "tenant_id": tenant_id,
         }
 
     monkeypatch.setattr(reviews, "new_job_id", lambda: job_id)
