@@ -68,12 +68,6 @@ async def enqueue_review(
         request_id=request.state.request_id,
         tenant_id=tenant.id,
     )
-
-    # Create the owning row before enqueueing so the worker — and every
-    # tenant-scoped read, including the brief queued window — always sees a
-    # tenant_id. The worker transitions this row pending -> running -> terminal.
-    # If enqueueing then fails, we must discard the row: a pending review no
-    # worker will ever pick up is worse than no review at all.
     now = datetime.now(UTC)
     review = Review(
         id=job_id,
