@@ -14,6 +14,7 @@ RUN uv sync --frozen --no-dev
 
 COPY src/ ./src/
 COPY migrations/ ./migrations/
+COPY scripts/ ./scripts/
 COPY alembic.ini main.py ./
 
 # Run as an unprivileged user.

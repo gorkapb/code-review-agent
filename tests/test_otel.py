@@ -21,6 +21,7 @@ def test_enqueue_span_injects_trace_context():
         job_id="job-123",
         queued_at=datetime.fromisoformat("2026-05-24T12:34:56+00:00"),
         request_id="req-123",
+        tenant_id="tenant-1",
     )
 
     with start_enqueue_span(
@@ -38,6 +39,7 @@ def test_worker_span_continues_enqueue_trace():
         job_id="job-123",
         queued_at=datetime.fromisoformat("2026-05-24T12:34:56+00:00"),
         request_id="req-123",
+        tenant_id="tenant-1",
     )
     with start_enqueue_span(
         pr_url="https://github.com/acme/widget/pull/42",
@@ -59,6 +61,7 @@ def test_log_processor_adds_current_trace_context():
         job_id="job-123",
         queued_at=datetime.fromisoformat("2026-05-24T12:34:56+00:00"),
         request_id="req-123",
+        tenant_id="tenant-1",
     )
 
     with start_enqueue_span(

@@ -36,6 +36,17 @@ services:
     command: uv run arq src.worker.worker.WorkerSettings
     depends_on: *app-deps
 
+  # On-demand admin tool: create a tenant + API key against the running stack.
+  # Kept out of `docker compose up` by the "tools" profile.
+  #   docker compose run --rm create-tenant "My Company"
+  create-tenant:
+    <<: *app-base
+    profiles: ["tools"]
+    entrypoint: ["uv", "run", "python", "scripts/create_tenant.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     image: postgres:17-alpine
     ports:
