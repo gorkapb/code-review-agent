@@ -33,7 +33,7 @@ def langfuse_trace_metadata(
     telemetry_context: Mapping[str, Any] | None,
 ) -> dict[str, str]:
     metadata: dict[str, str] = {"pr_url": pr_url}
-    for key in ("job_id", "request_id", "queued_at"):
+    for key in ("job_id", "request_id", "queued_at", "tenant_id"):
         value = telemetry_context.get(key) if telemetry_context else None
         if isinstance(value, str) and value:
             metadata[key] = value
