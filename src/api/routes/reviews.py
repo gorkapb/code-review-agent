@@ -6,9 +6,13 @@ import structlog
 from arq.connections import ArqRedis
 from arq.jobs import Job, JobStatus
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.agent.services.github_pull_request_diff import (
+    PullRequestDiffError,
+    validate_pr_url,
+)
 from src.api.security import CurrentTenant
 from src.observability.otel import start_enqueue_span
 from src.observability.telemetry_context import (
@@ -24,6 +28,17 @@ logger = structlog.get_logger(__name__)
 
 class ReviewRequest(BaseModel):
     pr_url: str
+
+    @field_validator("pr_url")
+    @classmethod
+    def _validate_pr_url(cls, value: str) -> str:
+        # Reject before a review row or job exists, so a bad host never reaches
+        # the worker (which would send the GitHub token to it).
+        try:
+            validate_pr_url(value)
+        except PullRequestDiffError as exc:
+            raise ValueError(f"{exc.code}: {exc.message}") from exc
+        return value
 
 
 class ReviewResponse(BaseModel):

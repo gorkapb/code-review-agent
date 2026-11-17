@@ -116,3 +116,25 @@ async def test_post_reviews_accepts_valid_token():
 
     assert response.status_code == 202
     assert response.json()["job_id"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pr_url",
+    [
+        "https://evil.example.com/acme/widget/pull/42",
+        "http://github.com/acme/widget/pull/42",
+    ],
+)
+async def test_post_reviews_rejects_disallowed_pr_url_before_creating_job(pr_url):
+    tenant = SimpleNamespace(id="tenant-1")
+    db = FakeDb(tenant=tenant)
+    async with _make_client(db) as client:
+        response = await client.post(
+            "/reviews",
+            json={"pr_url": pr_url},
+            headers={"Authorization": "Bearer cra_valid"},
+        )
+
+    assert response.status_code == 422
+    assert db.added == []

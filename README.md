@@ -78,6 +78,7 @@ values:
   Generate one with `python -c "import secrets; print(secrets.token_hex(32))"`.
   Rotating it invalidates every existing key.
 - `GITHUB_TOKEN` — optional; raises GitHub rate limits and allows private repos.
+- `GITHUB_ALLOWED_HOSTS` — comma-separated hosts PR URLs may use (default `github.com`); other hosts get a 422. If `GITHUB_API_BASE_URL` is set, only its host is accepted.
 - `LANGFUSE_*` — Langfuse tracing; leave keys blank to run without it. Self-hosted
   Langfuse on the host is reached from containers via `host.docker.internal`.
 - `OTEL_*` — OpenTelemetry export; without an OTLP endpoint, spans are created but

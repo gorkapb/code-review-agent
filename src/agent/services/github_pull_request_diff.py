@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import ParseResult, urlparse
+from urllib.parse import urlparse
 
 import httpx
 
@@ -19,6 +19,7 @@ from src.observability.langfuse import (
 GITHUB_API_VERSION = "2022-11-28"
 GITHUB_TIMEOUT_SECONDS = 15.0
 GITHUB_PER_PAGE = 100
+DEFAULT_GITHUB_API_BASE_URL = "https://api.github.com"
 
 
 class PullRequestDiffError(Exception):
@@ -70,12 +71,32 @@ async def fetch_pull_request_diff(pr_url: str) -> PullRequestDiff:
         return result
 
 
+def validate_pr_url(pr_url: str) -> None:
+    """Raise PullRequestDiffError if pr_url is not an allowed GitHub PR URL."""
+    _parse_github_pr_url(pr_url)
+
+
 def _parse_github_pr_url(pr_url: str) -> PullRequestRef:
-    parsed = urlparse(pr_url)
-    if parsed.scheme not in {"http", "https"} or parsed.hostname is None:
+    try:
+        parsed = urlparse(pr_url)
+        host = parsed.hostname
+        _ = parsed.port  # raises ValueError on a malformed port
+    except ValueError as exc:
         raise PullRequestDiffError(
             "Expected a GitHub pull request URL.",
             code="invalid_pr_url",
+        ) from exc
+
+    if parsed.scheme != "https" or not host:
+        raise PullRequestDiffError(
+            "Expected an https GitHub pull request URL.",
+            code="invalid_pr_url",
+        )
+
+    if host not in _allowed_github_hosts():
+        raise PullRequestDiffError(
+            f"Pull request host '{host}' is not allowed.",
+            code="unsupported_host",
         )
 
     path_parts = [part for part in parsed.path.split("/") if part]
@@ -94,23 +115,33 @@ def _parse_github_pr_url(pr_url: str) -> PullRequestRef:
         ) from exc
 
     owner, repo = path_parts[0], path_parts[1]
-    api_base_url = _github_api_base_url(parsed)
     return PullRequestRef(
-        owner=owner, repo=repo, number=pull_number, api_base_url=api_base_url
+        owner=owner, repo=repo, number=pull_number, api_base_url=_github_api_base_url()
     )
 
 
-def _github_api_base_url(parsed_url: ParseResult) -> str:
+def _allowed_github_hosts() -> set[str]:
+    """Hosts a submitted PR URL may use. Hostnames are compared lowercased."""
+    configured_url = settings.github_api_base_url.strip()
+    if configured_url:
+        # GitHub Enterprise: only the host the operator configured is trusted.
+        configured_host = urlparse(configured_url).hostname
+        return {configured_host} if configured_host else set()
+
+    return {
+        host.strip().lower()
+        for host in settings.github_allowed_hosts.split(",")
+        if host.strip()
+    }
+
+
+def _github_api_base_url() -> str:
+    # Always from configuration, never from the submitted URL: the token is
+    # sent to this address, so it must not be attacker-controlled.
     configured_url = settings.github_api_base_url.strip()
     if configured_url:
         return configured_url.rstrip("/")
-
-    host = parsed_url.hostname or ""
-    port = f":{parsed_url.port}" if parsed_url.port else ""
-    netloc = f"{host}{port}"
-    if host.lower() == "github.com":
-        return "https://api.github.com"
-    return f"{parsed_url.scheme}://{netloc}/api/v3"
+    return DEFAULT_GITHUB_API_BASE_URL
 
 
 def _create_github_client(api_base_url: str) -> httpx.AsyncClient:

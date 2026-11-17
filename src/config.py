@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     github_api_base_url: str = ""
     github_token: str = ""
+    # Comma-separated hosts a submitted PR URL may point at. Ignored when
+    # github_api_base_url is set: then only that URL's host is accepted.
+    github_allowed_hosts: str = "github.com"
     anthropic_api_base_url: str = "https://api.anthropic.com"
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-4-5-20251001"
