@@ -1,0 +1,98 @@
+[
+  {
+    "id": "bug-hardcoded-secret",
+    "diff": "diff --git a/app/payments.py b/app/payments.py\n--- a/app/payments.py\n+++ b/app/payments.py\n@@ -1,9 +1,10 @@\n import httpx\n\n-from app.config import settings\n-\n STRIPE_API = \"https://api.stripe.com/v1\"\n+STRIPE_SECRET_KEY = \"pay-prod-secret-7f3c9a1e5b2d8c4f6a0e\"\n\n\n def charge(customer_id: str, amount_cents: int) -> dict:\n-    headers = {\"Authorization\": f\"Bearer {settings.stripe_secret_key}\"}\n+    headers = {\"Authorization\": f\"Bearer {STRIPE_SECRET_KEY}\"}\n     resp = httpx.post(\n         f\"{STRIPE_API}/charges\",\n",
+    "clean": false,
+    "expected": {
+      "category": "security",
+      "keyword": "secret"
+    }
+  },
+  {
+    "id": "bug-sql-string-format",
+    "diff": "diff --git a/app/repositories/users.py b/app/repositories/users.py\n--- a/app/repositories/users.py\n+++ b/app/repositories/users.py\n@@ -12,8 +12,9 @@ class UserRepository:\n     def __init__(self, conn):\n         self.conn = conn\n\n-    def find_by_email(self, email: str):\n-        return self.conn.execute(\"SELECT id, email FROM users WHERE email = %s\", (email,)).fetchone()\n+    def search(self, name: str):\n+        query = \"SELECT id, email, name FROM users WHERE name LIKE '%{}%'\".format(name)\n+        return self.conn.execute(query).fetchall()\n",
+    "clean": false,
+    "expected": {
+      "category": "security",
+      "keyword": "injection"
+    }
+  },
+  {
+    "id": "bug-missing-await",
+    "diff": "diff --git a/app/services/orders.py b/app/services/orders.py\n--- a/app/services/orders.py\n+++ b/app/services/orders.py\n@@ -20,10 +20,13 @@ async def create_order(session: AsyncSession, cart: Cart) -> Order:\n     order = Order(customer_id=cart.customer_id, total=cart.total())\n     session.add(order)\n     await session.commit()\n+    inventory.reserve(cart.items)\n+    await notify_customer(order)\n     return order\n\n\n class InventoryClient:\n+    async def reserve(self, items: list[CartItem]) -> None:\n+        await self._http.post(\"/reservations\", json=[i.sku for i in items])\n",
+    "clean": false,
+    "expected": {
+      "category": "bug",
+      "keyword": "await"
+    }
+  },
+  {
+    "id": "bug-off-by-one",
+    "diff": "diff --git a/app/pagination.py b/app/pagination.py\n--- a/app/pagination.py\n+++ b/app/pagination.py\n@@ -1,8 +1,9 @@\n def paginate(items: list, page: int, page_size: int) -> list:\n-    \"\"\"Return the given 1-indexed page of items.\"\"\"\n-    start = (page - 1) * page_size\n-    return items[start : start + page_size]\n+    \"\"\"Return the given 1-indexed page of items.\"\"\"\n+    start = page * page_size\n+    end = start + page_size\n+    return items[start:end]\n",
+    "clean": false,
+    "expected": {
+      "category": "bug",
+      "keyword": "off-by-one"
+    }
+  },
+  {
+    "id": "bug-unhandled-none",
+    "diff": "diff --git a/app/api/profile.py b/app/api/profile.py\n--- a/app/api/profile.py\n+++ b/app/api/profile.py\n@@ -8,7 +8,8 @@ router = APIRouter()\n\n @router.get(\"/users/{user_id}/display-name\")\n def display_name(user_id: int, db: Session = Depends(get_db)) -> dict:\n-    user = db.get(User, user_id)\n-    return {\"display_name\": user.name if user else \"Unknown\"}\n+    user = db.get(User, user_id)\n+    first, last = user.first_name, user.last_name\n+    return {\"display_name\": f\"{first} {last}\".strip()}\n",
+    "clean": false,
+    "expected": {
+      "category": "bug",
+      "keyword": "None"
+    }
+  },
+  {
+    "id": "clean-rename-and-docstring",
+    "diff": "diff --git a/app/utils/text.py b/app/utils/text.py\n--- a/app/utils/text.py\n+++ b/app/utils/text.py\n@@ -1,6 +1,7 @@\n-def norm(s: str) -> str:\n+def normalize_whitespace(text: str) -> str:\n+    \"\"\"Collapse runs of whitespace into single spaces and trim the ends.\"\"\"\n-    return \" \".join(s.split())\n+    return \" \".join(text.split())\ndiff --git a/app/importer.py b/app/importer.py\n--- a/app/importer.py\n+++ b/app/importer.py\n@@ -3,7 +3,7 @@\n-from app.utils.text import norm\n+from app.utils.text import normalize_whitespace\n\n\n def clean_title(raw: str) -> str:\n-    return norm(raw).title()\n+    return normalize_whitespace(raw).title()\n",
+    "clean": true,
+    "expected": null
+  },
+  {
+    "id": "clean-parameterized-query",
+    "diff": "diff --git a/app/repositories/orders.py b/app/repositories/orders.py\n--- a/app/repositories/orders.py\n+++ b/app/repositories/orders.py\n@@ -15,6 +15,14 @@ class OrderRepository:\n             (order_id,),\n         ).fetchone()\n\n+    def list_for_customer(self, customer_id: int, limit: int = 50) -> list[Row]:\n+        \"\"\"Most recent orders for a customer, newest first.\"\"\"\n+        return self.conn.execute(\n+            \"SELECT id, total, created_at FROM orders \"\n+            \"WHERE customer_id = %s ORDER BY created_at DESC LIMIT %s\",\n+            (customer_id, limit),\n+        ).fetchall()\n+\n",
+    "clean": true,
+    "expected": null
+  },
+  {
+    "id": "clean-add-test",
+    "diff": "diff --git a/tests/test_pagination.py b/tests/test_pagination.py\n--- a/tests/test_pagination.py\n+++ b/tests/test_pagination.py\n@@ -1,9 +1,19 @@\n+import pytest\n+\n from app.pagination import paginate\n\n\n def test_first_page():\n     assert paginate(list(range(10)), page=1, page_size=3) == [0, 1, 2]\n+\n+\n+def test_last_partial_page():\n+    assert paginate(list(range(10)), page=4, page_size=3) == [9]\n+\n+\n+@pytest.mark.parametrize(\"page\", [5, 100])\n+def test_page_past_end_is_empty(page):\n+    assert paginate(list(range(10)), page=page, page_size=3) == []\n",
+    "clean": true,
+    "expected": null
+  },
+  {
+    "id": "perf-n-plus-one-query",
+    "diff": "diff --git a/app/reports.py b/app/reports.py\n--- a/app/reports.py\n+++ b/app/reports.py\n@@ -4,9 +4,13 @@ from app.models import Author, Book\n\n\n def books_per_author(session: Session) -> dict[str, int]:\n-    rows = session.execute(\n-        select(Author.name, func.count(Book.id)).join(Book).group_by(Author.name)\n-    )\n-    return dict(rows.all())\n+    result = {}\n+    for author in session.scalars(select(Author)).all():\n+        books = session.scalars(\n+            select(Book).where(Book.author_id == author.id)\n+        ).all()\n+        result[author.name] = len(books)\n+    return result\n",
+    "clean": false,
+    "expected": {
+      "category": "performance",
+      "keyword": "query"
+    }
+  },
+  {
+    "id": "maint-duplicated-validation",
+    "diff": "diff --git a/app/api/accounts.py b/app/api/accounts.py\n--- a/app/api/accounts.py\n+++ b/app/api/accounts.py\n@@ -10,6 +10,40 @@ router = APIRouter()\n\n+@router.post(\"/accounts\")\n+def create_account(body: AccountIn, db: Session = Depends(get_db)):\n+    if not body.email or \"@\" not in body.email:\n+        raise HTTPException(422, \"invalid email\")\n+    if len(body.password) < 12:\n+        raise HTTPException(422, \"password too short\")\n+    if not any(c.isdigit() for c in body.password):\n+        raise HTTPException(422, \"password needs a digit\")\n+    if not any(c.isupper() for c in body.password):\n+        raise HTTPException(422, \"password needs an uppercase letter\")\n+    return accounts.create(db, body)\n+\n+\n+@router.put(\"/accounts/{account_id}\")\n+def update_account(account_id: int, body: AccountIn, db: Session = Depends(get_db)):\n+    if not body.email or \"@\" not in body.email:\n+        raise HTTPException(422, \"invalid email\")\n+    if len(body.password) < 12:\n+        raise HTTPException(422, \"password too short\")\n+    if not any(c.isdigit() for c in body.password):\n+        raise HTTPException(422, \"password needs a digit\")\n+    if not any(c.isupper() for c in body.password):\n+        raise HTTPException(422, \"password needs an uppercase letter\")\n+    return accounts.update(db, account_id, body)\n+\n+\n+@router.post(\"/admin/accounts\")\n+def admin_create_account(body: AccountIn, db: Session = Depends(get_db)):\n+    if not body.email or \"@\" not in body.email:\n+        raise HTTPException(422, \"invalid email\")\n+    if len(body.password) < 10:\n+        raise HTTPException(422, \"password too short\")\n+    if not any(c.isdigit() for c in body.password):\n+        raise HTTPException(422, \"password needs a digit\")\n+    return accounts.create(db, body, is_admin=True)\n",
+    "clean": false,
+    "expected": {
+      "category": "maintainability",
+      "keyword": "duplicat"
+    }
+  },
+  {
+    "id": "real-pr-token-leak-via-pr-host",
+    "diff": "diff --git a/src/agent/pr_diff.py b/src/agent/pr_diff.py\nnew file mode 100644\n--- /dev/null\n+++ b/src/agent/pr_diff.py\n@@ -0,0 +68,61 @@\n+def _parse_github_pr_url(pr_url: str) -> PullRequestRef:\n+    parsed = urlparse(pr_url)\n+    if parsed.scheme not in {\"http\", \"https\"} or parsed.hostname is None:\n+        raise PullRequestDiffError(\n+            \"Expected a GitHub pull request URL.\",\n+            code=\"invalid_pr_url\",\n+        )\n+\n+    path_parts = [part for part in parsed.path.split(\"/\") if part]\n+    if len(path_parts) < 4 or path_parts[2] != \"pull\":\n+        raise PullRequestDiffError(\n+            \"Expected a GitHub pull request URL like /owner/repo/pull/123.\",\n+            code=\"invalid_pr_url\",\n+        )\n+\n+    try:\n+        pull_number = int(path_parts[3])\n+    except ValueError as exc:\n+        raise PullRequestDiffError(\n+            \"GitHub pull request URL contains an invalid PR number.\",\n+            code=\"invalid_pr_url\",\n+        ) from exc\n+\n+    owner, repo = path_parts[0], path_parts[1]\n+    api_base_url = _github_api_base_url(parsed)\n+    return PullRequestRef(\n+        owner=owner, repo=repo, number=pull_number, api_base_url=api_base_url\n+    )\n+\n+\n+def _github_api_base_url(parsed_url: ParseResult) -> str:\n+    configured_url = settings.github_api_base_url.strip()\n+    if configured_url:\n+        return configured_url.rstrip(\"/\")\n+\n+    host = parsed_url.hostname or \"\"\n+    port = f\":{parsed_url.port}\" if parsed_url.port else \"\"\n+    netloc = f\"{host}{port}\"\n+    if host.lower() == \"github.com\":\n+        return \"https://api.github.com\"\n+    return f\"{parsed_url.scheme}://{netloc}/api/v3\"\n+\n+\n+def _create_github_client(api_base_url: str) -> httpx.AsyncClient:\n+    return httpx.AsyncClient(\n+        base_url=api_base_url,\n+        headers=_github_headers(),\n+        timeout=GITHUB_TIMEOUT_SECONDS,\n+    )\n+\n+\n+def _github_headers() -> dict[str, str]:\n+    headers = {\n+        \"Accept\": \"application/vnd.github+json\",\n+        \"User-Agent\": \"code-review-agent\",\n+        \"X-GitHub-Api-Version\": GITHUB_API_VERSION,\n+    }\n+    token = (settings.github_token or settings.gh_token).strip()\n+    if token:\n+        headers[\"Authorization\"] = f\"Bearer {token}\"\n+    return headers\n",
+    "clean": false,
+    "expected": {
+      "category": "security",
+      "keyword": "token"
+    }
+  },
+  {
+    "id": "real-pr-api-key-auth",
+    "diff": "diff --git a/src/api/security.py b/src/api/security.py\nnew file mode 100644\nindex 0000000..54944db\n--- /dev/null\n+++ b/src/api/security.py\n@@ -0,0 +1,86 @@\n+\"\"\"API key authentication.\n+\n+Third parties authenticate with a bearer token: ``Authorization: Bearer <key>``\n+(RFC 6750), the de-facto standard for protected HTTP APIs.\n+\n+API keys are high-entropy random tokens (not human passwords), so we store and\n+look them up by a deterministic HMAC-SHA256 keyed hash. That keeps the hash\n+column UNIQUE + indexed and makes auth a single O(1) equality lookup — something\n+a salted password hash (bcrypt/argon2) cannot do, since it would force a full\n+table scan. The raw key is shown to the caller once at creation and never stored.\n+\"\"\"\n+\n+import hashlib\n+import hmac\n+import secrets\n+from typing import Annotated\n+\n+from fastapi import Depends, HTTPException, Security, status\n+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer\n+from sqlalchemy import select\n+from sqlalchemy.ext.asyncio import AsyncSession\n+\n+from src.config import settings\n+from src.storage.database import get_db\n+from src.storage.models import ApiKey, Tenant\n+\n+# auto_error=False so we own the 401 response. HTTPBearer's default raises 403\n+# on a missing token, but RFC 6750 wants 401 + a `WWW-Authenticate: Bearer`\n+# challenge — which is also what third-party clients and SDKs expect.\n+_bearer_scheme = HTTPBearer(auto_error=False, description=\"API key as a bearer token\")\n+\n+\n+def hash_api_key(raw_key: str) -> str:\n+    \"\"\"Return the HMAC-SHA256 hex digest used to store and look up a key.\"\"\"\n+    return hmac.new(\n+        settings.api_key_pepper.encode(),\n+        raw_key.encode(),\n+        hashlib.sha256,\n+    ).hexdigest()\n+\n+\n+def generate_api_key() -> str:\n+    \"\"\"Generate a new raw API key. Returned once; only its hash is persisted.\"\"\"\n+    return f\"cra_{secrets.token_urlsafe(32)}\"\n+\n+\n+def _unauthorized(detail: str, *, invalid_token: bool = False) -> HTTPException:\n+    # RFC 6750: signal a bad token with `error=\"invalid_token\"`; a plain\n+    # `Bearer` challenge means \"credentials required\".\n+    challenge = 'Bearer error=\"invalid_token\"' if invalid_token else \"Bearer\"\n+    return HTTPException(\n+        status_code=status.HTTP_401_UNAUTHORIZED,\n+        detail=detail,\n+        headers={\"WWW-Authenticate\": challenge},\n+    )\n+\n+\n+async def get_current_tenant(\n+    credentials: Annotated[\n+        HTTPAuthorizationCredentials | None, Security(_bearer_scheme)\n+    ],\n+    db: Annotated[AsyncSession, Depends(get_db)],\n+) -> Tenant:\n+    \"\"\"Resolve the tenant for a request's bearer token, or raise 401.\n+\n+    Matches only active tenants holding a non-revoked key.\n+    \"\"\"\n+    if credentials is None or not credentials.credentials:\n+        raise _unauthorized(\"Missing bearer token.\")\n+\n+    stmt = (\n+        select(Tenant)\n+        .join(ApiKey, ApiKey.tenant_id == Tenant.id)\n+        .where(\n+            ApiKey.key_hash == hash_api_key(credentials.credentials),\n+            ApiKey.revoked_at.is_(None),\n+            Tenant.is_active.is_(True),\n+        )\n+    )\n+    tenant = (await db.execute(stmt)).scalar_one_or_none()\n+    if tenant is None:\n+        raise _unauthorized(\"Invalid bearer token.\", invalid_token=True)\n+    return tenant\n+\n+\n+CurrentTenant = Annotated[Tenant, Depends(get_current_tenant)]\n",
+    "clean": true,
+    "expected": null
+  }
+]
