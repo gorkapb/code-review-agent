@@ -187,3 +187,114 @@ async def test_fetch_pull_request_diff_raises_clear_error_for_missing_pr(
         "message": "GitHub API request failed (404): Not Found",
         "status_code": 404,
     }
+
+
+def _forbid_github_client(monkeypatch) -> list[str]:
+    """Patch the client factory so any attempt to build one is recorded."""
+    created: list[str] = []
+
+    def create_client(api_base_url: str) -> httpx.AsyncClient:
+        created.append(api_base_url)
+        raise AssertionError("no HTTP client should be created")
+
+    monkeypatch.setattr(
+        github_pull_request_diff_module, "_create_github_client", create_client
+    )
+    return created
+
+
+@pytest.mark.asyncio
+async def test_fetch_rejects_other_host_without_making_request(monkeypatch):
+    monkeypatch.setattr(
+        github_pull_request_diff_module.settings, "github_token", "secret-token"
+    )
+    created = _forbid_github_client(monkeypatch)
+
+    with pytest.raises(
+        github_pull_request_diff_module.PullRequestDiffError
+    ) as exc_info:
+        await github_pull_request_diff_module.fetch_pull_request_diff(
+            "https://evil.example.com/acme/widget/pull/42"
+        )
+
+    assert exc_info.value.code == "unsupported_host"
+    assert created == []
+
+
+@pytest.mark.parametrize(
+    "pr_url",
+    [
+        "https://github.com.evil.example.com/acme/widget/pull/42",
+        "https://github.com@evil.example.com/acme/widget/pull/42",
+        "https://api.github.com/acme/widget/pull/42",
+    ],
+)
+def test_parse_rejects_lookalike_hosts(pr_url):
+    with pytest.raises(
+        github_pull_request_diff_module.PullRequestDiffError
+    ) as exc_info:
+        github_pull_request_diff_module._parse_github_pr_url(pr_url)
+
+    assert exc_info.value.code == "unsupported_host"
+
+
+@pytest.mark.asyncio
+async def test_fetch_rejects_http_url_without_making_request(monkeypatch):
+    created = _forbid_github_client(monkeypatch)
+
+    with pytest.raises(
+        github_pull_request_diff_module.PullRequestDiffError
+    ) as exc_info:
+        await github_pull_request_diff_module.fetch_pull_request_diff(
+            "http://github.com/acme/widget/pull/42"
+        )
+
+    assert exc_info.value.code == "invalid_pr_url"
+    assert created == []
+
+
+def test_parse_accepts_github_com_case_insensitively():
+    pr_ref = github_pull_request_diff_module._parse_github_pr_url(
+        "https://GitHub.com/acme/widget/pull/42"
+    )
+
+    assert pr_ref.number == 42
+    assert pr_ref.api_base_url == "https://api.github.com"
+
+
+def test_enterprise_allows_only_configured_host(monkeypatch):
+    monkeypatch.setattr(
+        github_pull_request_diff_module.settings,
+        "github_api_base_url",
+        "https://ghe.example.com/api/v3/",
+    )
+
+    pr_ref = github_pull_request_diff_module._parse_github_pr_url(
+        "https://ghe.example.com/acme/widget/pull/7"
+    )
+    assert pr_ref.api_base_url == "https://ghe.example.com/api/v3"
+
+    for other in (
+        "https://github.com/acme/widget/pull/7",
+        "https://evil.example.com/acme/widget/pull/7",
+    ):
+        with pytest.raises(
+            github_pull_request_diff_module.PullRequestDiffError
+        ) as exc_info:
+            github_pull_request_diff_module._parse_github_pr_url(other)
+        assert exc_info.value.code == "unsupported_host"
+
+
+def test_allowed_hosts_setting_is_honoured(monkeypatch):
+    monkeypatch.setattr(
+        github_pull_request_diff_module.settings,
+        "github_allowed_hosts",
+        "github.com, www.github.com",
+    )
+
+    pr_ref = github_pull_request_diff_module._parse_github_pr_url(
+        "https://www.github.com/acme/widget/pull/42"
+    )
+
+    # The API address never comes from the submitted URL.
+    assert pr_ref.api_base_url == "https://api.github.com"
