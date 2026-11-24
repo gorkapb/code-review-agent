@@ -13,6 +13,92 @@ LangGraph agent, and the result is persisted in Postgres. Each run is traced
 (Langfuse for the agent, OpenTelemetry for the infrastructure) and model calls are
 cost-tracked.
 
+## Architecture
+
+One review, from request to stored result. Langfuse and OpenTelemetry sit on the
+side: neither one is on the request path, and the app runs without either.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    box API service
+        participant API as FastAPI app
+    end
+    box Data stores
+        participant PG as Postgres
+        participant Redis as Redis (ARQ queue)
+    end
+    box Worker service
+        participant Worker as ARQ worker<br/>(analyze_pr_task)
+        participant Graph as LangGraph agent
+    end
+    box External APIs
+        participant GH as GitHub API
+        participant Claude as Anthropic API
+    end
+    box Observability (side channel)
+        participant OTel as OpenTelemetry<br/>(OTLP)
+        participant LF as Langfuse
+    end
+
+    Note over Client,API: Submit
+    Client->>API: POST /reviews {pr_url}<br/>Authorization: Bearer cra_...
+    API->>PG: Look up HMAC-SHA256(key) in api_keys
+    PG-->>API: tenant (or 401)
+    API->>API: Validate pr_url against GITHUB_ALLOWED_HOSTS (or 422)
+    API->>PG: INSERT reviews (id=job_id, tenant_id, status=pending)
+    API->>OTel: enqueue_job span, traceparent injected into telemetry_context
+    API->>Redis: enqueue_job("analyze_pr_task", pr_url, telemetry_context, _job_id)
+    alt enqueue fails or duplicate job
+        API->>PG: DELETE review row
+        API-->>Client: 503 / 409
+    else queued
+        API-->>Client: 202 {job_id}
+    end
+
+    Note over Redis,Worker: Background processing
+    Redis->>Worker: Dequeue job
+    Worker->>PG: UPDATE status=running
+    Worker->>OTel: analyze_pr_task span (continues API trace),<br/>code_review.* queue-latency + jobs-started metrics
+    Worker->>LF: Trace "review-pull-request" (trace id derived from job_id)
+    Worker->>Graph: ainvoke({pr_url})
+
+    Graph->>GH: GET /repos/{owner}/{repo}/pulls/{n}<br/>GET .../pulls/{n}/files (paginated)
+    GH-->>Graph: PR metadata + file patches
+    Graph->>LF: Observation "fetch-github-pull-request-diff"
+
+    Graph->>Claude: POST /v1/messages (diff + review prompt)
+    Claude-->>Graph: Structured findings + token usage
+    Graph->>LF: Generation "anthropic-pr-review" (model, usage, cost)
+
+    Graph->>Graph: format_output (build review result)
+    Graph->>LF: Observation "format-review-output"
+    Graph-->>Worker: result {findings, metadata}
+
+    alt success
+        Worker->>OTel: jobs-completed + duration metrics
+    else GitHub / Anthropic / unexpected error
+        Worker->>OTel: Span error + jobs-failed metric (error_code)
+    end
+    Worker->>PG: UPDATE status=complete|failed, result=JSONB
+    Worker->>LF: Flush trace (status, finding count)
+
+    Note over Client,PG: Poll
+    Client->>API: GET /reviews/{job_id}
+    API->>PG: SELECT review (scoped to tenant, else 404)
+    alt complete or failed
+        PG-->>API: status + result
+    else pending or running
+        API->>Redis: Job status (queued / in_progress)
+    end
+    API-->>Client: {job_id, status, result}
+```
+
+HTTP calls to GitHub and Anthropic, and every SQLAlchemy query, also produce
+OpenTelemetry spans through auto-instrumentation; the diagram shows only the
+manual spans and metrics.
+
 ## Quick start
 
 **Prerequisites:** Docker, an Anthropic API key.
