@@ -86,8 +86,60 @@ values:
 
 ## Evals
 
-The eval suite uses [deepeval](https://deepeval.com) with LLM-as-judge metrics
-(`gpt-4o-mini` by default). Set `OPENAI_API_KEY` in `.env`, then:
+### Review-case eval (real agent)
+
+`eval_dataset/review_cases.json` holds diffs with planted bugs (security,
+correctness, performance, maintainability) and clean diffs. The runner sends each
+diff straight to the review model via `review_pull_request_diff(diff=..., metadata={})`,
+so no GitHub fetch happens, and scores the findings in two ways:
+
+1. **Deterministic (no judge).** A bug case passes if a finding has the expected
+   `category` and its message or suggestion contains the expected `keyword`
+   (case-insensitive substring). A clean case passes if no finding is `medium`,
+   `high` or `critical`. This gives two numbers: **bugs caught** (recall) and
+   **clean diffs with a false alarm** (false-positive rate).
+2. **LLM judge.** The same outputs are scored with deepeval metrics, such as
+   `code_review_quality` (G-Eval, `gpt-4o-mini` by default).
+
+Requires `ANTHROPIC_API_KEY`, plus `OPENAI_API_KEY` for the judge.
+
+```bash
+# Deterministic scoring only
+uv run python run_evals.py --review-cases eval_dataset/review_cases.json --no-judge
+
+# Deterministic scoring + judge
+uv run python run_evals.py --review-cases eval_dataset/review_cases.json --metrics code_review_quality
+```
+
+Each run prints a compact table, with one row per case showing the deterministic
+result, the judge score and the findings, followed by the totals:
+
+```
+case                               det   judge  findings
+--------------------------------------------------------
+bug-hardcoded-secret               PASS  0.88   critical/security, high/maintainability
+clean-add-test                     PASS  0.30   -
+...
+Bugs caught             : 6/8
+Clean diffs, false alarm: 3/4
+Judge passed            : 8/12 (mean score 0.65)
+```
+
+Each run also writes a full JSON report to `eval_results/review_<UTC timestamp>.json`
+(git-ignored; change the location with `--output-dir`). The report contains the run's
+models and totals, and, for each case, the findings, the deterministic result and each
+judge metric's score, threshold and reason. Keep reports to compare runs.
+
+The exit code is `0` only when every bug is caught, no clean diff gets a false alarm
+and every judge metric passes.
+
+On Windows, set `PYTHONIOENCODING=utf-8` so deepeval's console output does not
+crash. Set `LANGFUSE_TRACING_ENABLED=false` if your Langfuse host is not reachable.
+
+### Generic deepeval datasets
+
+To score pre-recorded outputs (records with `input` / `actual_output`) without
+calling the agent:
 
 ```bash
 uv run python run_evals.py                         # all metrics, default dataset

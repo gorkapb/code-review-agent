@@ -222,3 +222,6 @@ __marimo__/
 
 # deepeval
 .deepeval/
+
+# Eval run reports
+eval_results/
